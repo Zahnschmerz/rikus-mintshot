@@ -32,7 +32,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "5.1"
+VERSION = "5.2"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/linux-mint-snapshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -414,6 +414,8 @@ def fehlende_teile():
             fehlt.append(f'Live-Baustein {hook}' if SPRACHE == 'de' else f'live component {hook}')
     if not os.path.exists('/etc/skel/Desktop/system-installieren.desktop'):
         fehlt.append('Installer-Schreibtisch-Symbol' if SPRACHE == 'de' else 'installer desktop icon')
+    if not os.path.exists('/usr/local/sbin/lms-persist-save'):
+        fehlt.append('RAM-Persistenz-Dienst' if SPRACHE == 'de' else 'RAM-persistence service')
     if _system_app_version() != VERSION:
         fehlt.append('App im System (/opt) — Teil jedes Schnappschusses' if SPRACHE == 'de'
                      else 'app inside the system (/opt) — part of every snapshot')
@@ -457,6 +459,12 @@ install -m 0755 "{DATEN}/live-hooks/0029-live-user-anlegen" /usr/lib/live/config
 install -m 0755 "{DATEN}/live-hooks/2000-installer-desktop-icon" /usr/lib/live/config/
 mkdir -p /etc/skel/Desktop
 install -m 0755 "{DATEN}/desktop/system-installieren.desktop" /etc/skel/Desktop/
+
+# RAM-Persistenz: Save-Dienst ins System (greift NUR beim "Persistenz im RAM"-Boot-Modus)
+mkdir -p /usr/local/sbin /etc/systemd/system/multi-user.target.wants
+install -m 0755 "{DATEN}/persistenz/lms-persist-save" /usr/local/sbin/lms-persist-save
+install -m 0644 "{DATEN}/persistenz/lms-persist-save.service" /etc/systemd/system/lms-persist-save.service
+ln -sf /etc/systemd/system/lms-persist-save.service /etc/systemd/system/multi-user.target.wants/lms-persist-save.service
 
 # Calamares aus dem normalen Menue verstecken (Symbol auf dem Live-Schreibtisch ist der Weg)
 if [ -f /usr/share/applications/calamares.desktop ]; then
@@ -817,7 +825,10 @@ class SnapshotApp(Gtk.Window):
         self.knopf_pruef.connect('clicked', self.stick_pruefen)
         self.knopf_loesch = Gtk.Button(label=T['knopf_loesch'])
         self.knopf_loesch.connect('clicked', self.iso_loeschen)
-        for k in (self.knopf_stick, self.knopf_pruef, self.knopf_loesch):
+        self.knopf_persist = Gtk.Button(
+            label='Persistenz-Kiste anlegen' if SPRACHE == 'de' else 'Add persistence box')
+        self.knopf_persist.connect('clicked', self.persistenz_anlegen)
+        for k in (self.knopf_stick, self.knopf_pruef, self.knopf_persist, self.knopf_loesch):
             zeile.pack_start(k, False, False, 0)
         box_liste.pack_start(zeile, False, False, 0)
         haupt.pack_start(rahmen_liste, False, False, 0)
@@ -1284,6 +1295,82 @@ done'''], timeout=25, check=False)
                            T['stick_falsch_text'].format(geraet=geraet))
         except Exception as fehler:
             self.melde(Gtk.MessageType.ERROR, T['pruef_fehler'], str(fehler))
+        finally:
+            self.lauf_aktiv = False
+            self.setze_phase(T['bereit_kurz'])
+
+    # ================= Persistenz-Kiste auf Stick =================
+
+    def persistenz_anlegen(self, _knopf):
+        de = SPRACHE == 'de'
+        try:
+            lsblk = subprocess.run(['lsblk', '-nd', '-o', 'NAME,TRAN,TYPE,MODEL,SIZE'],
+                                   capture_output=True, text=True).stdout
+        except Exception as fehler:
+            self.melde(Gtk.MessageType.ERROR, 'lsblk', str(fehler)); return
+        sticks = [z.split(None, 4) for z in lsblk.splitlines()
+                  if len(z.split()) >= 3 and z.split()[1] == 'usb' and z.split()[2] == 'disk']
+        if not sticks:
+            self.melde(Gtk.MessageType.ERROR, T['kein_stick_titel'], T['kein_stick_text']); return
+        s = sticks[0]
+        dev = f"/dev/{s[0]}"
+        modell = s[3].strip() if len(s) > 3 else ''
+        groesse = s[4].strip() if len(s) > 4 else ''
+        blk = subprocess.run(['blkid', f'{dev}1'], capture_output=True, text=True).stdout.lower()
+        if 'iso9660' not in blk:
+            self.melde(Gtk.MessageType.WARNING,
+                       'Erst die ISO schreiben' if de else 'Write the ISO first',
+                       (f"Auf {dev} ({modell}) liegt noch keine Snapshot-ISO.\n"
+                        "Bitte erst mit »Auf USB-Stick schreiben« die ISO aufspielen,\n"
+                        "dann hier die Persistenz-Kiste anlegen.") if de else
+                       (f"No snapshot ISO on {dev} ({modell}) yet.\n"
+                        "Write the ISO with »Write to USB stick« first, then add the box."))
+            return
+        d = Gtk.Dialog(title='Persistenz-Kiste anlegen' if de else 'Add persistence box',
+                       transient_for=self, modal=True)
+        d.add_button('Abbrechen' if de else 'Cancel', Gtk.ResponseType.CANCEL)
+        d.add_button('Anlegen' if de else 'Create', Gtk.ResponseType.OK)
+        box = d.get_content_area(); box.set_spacing(8); box.set_border_width(12)
+        box.add(Gtk.Label(label=f"USB-Stick: {dev}   {modell}   {groesse}", xalign=0))
+        box.add(Gtk.Label(
+            label=("Im freien Platz NACH der ISO entsteht eine Persistenz-Kiste.\n"
+                   "Die ISO bleibt unangetastet — der Stick bootet weiter." if de else
+                   "A persistence box is created in the free space AFTER the ISO.\n"
+                   "The ISO stays untouched — the stick keeps booting."), xalign=0))
+        r_all = Gtk.RadioButton.new_with_label(
+            None, "Alles merken (System + Programme + Daten)" if de else "Remember everything")
+        r_home = Gtk.RadioButton.new_with_label_from_widget(
+            r_all, "Nur persönliche Daten (/home)" if de else "Only personal data (/home)")
+        box.add(r_all); box.add(r_home)
+        d.show_all()
+        antwort = d.run()
+        modus = 'all' if r_all.get_active() else 'home'
+        d.destroy()
+        if antwort != Gtk.ResponseType.OK:
+            return
+        self.setze_phase('Persistenz-Kiste wird angelegt ...' if de else 'Creating persistence box ...')
+        self.lauf_aktiv = True
+        GLib.timeout_add(200, self._puls)
+        threading.Thread(target=self._persist_arbeit, args=(dev, modus, de), daemon=True).start()
+
+    def _persist_arbeit(self, dev, modus, de):
+        skript = os.path.join(DATEN, 'persistenz', 'persistenz-auf-stick.sh')
+        try:
+            r = subprocess.run(self.root.split() + ['bash', skript, dev, modus],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                self.melde(Gtk.MessageType.INFO,
+                           'Persistenz-Kiste fertig' if de else 'Persistence box ready',
+                           ((r.stdout.strip() or 'Fertig.') +
+                            "\n\nBeim Starten vom Stick jetzt »mit Persistenz« oder\n"
+                            "»Persistenz im RAM« im Boot-Menü wählen.") if de else
+                           ((r.stdout.strip() or 'Done.') +
+                            "\n\nWhen booting the stick, pick »with persistence« or »RAM persistence«."))
+            else:
+                self.melde(Gtk.MessageType.ERROR, 'Fehler' if de else 'Error',
+                           (r.stdout + '\n' + r.stderr).strip() or ('Fehlgeschlagen' if de else 'Failed'))
+        except Exception as fehler:
+            self.melde(Gtk.MessageType.ERROR, 'Fehler' if de else 'Error', str(fehler))
         finally:
             self.lauf_aktiv = False
             self.setze_phase(T['bereit_kurz'])

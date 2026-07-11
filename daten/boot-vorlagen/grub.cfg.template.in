@@ -28,6 +28,18 @@ menuentry "${DISTRO} - English (US)" {
     initrd  /live/initrd.img
 }
 
+menuentry "${DISTRO} (mit Persistenz — Änderungen bleiben / persistent USB)" {
+    set gfxpayload=keep
+    linux   /live/vmlinuz boot=live persistence persistence-encryption=none ${ifnames_opt} ${netconfig_opt} username={LIVEUSER} locales={LOCALE} keyboard-layouts={KEYBOARD} timezone={TIMEZONE}
+    initrd  /live/initrd.img
+}
+
+menuentry "${DISTRO} (Persistenz im RAM — schont den USB / RAM, save on shutdown)" {
+    set gfxpayload=keep
+    linux   /live/vmlinuz boot=live persistence persistence-encryption=none persistence-read-only ${ifnames_opt} ${netconfig_opt} username={LIVEUSER} locales={LOCALE} keyboard-layouts={KEYBOARD} timezone={TIMEZONE}
+    initrd  /live/initrd.img
+}
+
 submenu 'Erweiterte Optionen ...' {
 
     menuentry "${DISTRO} (in den RAM laden / load to RAM)" {

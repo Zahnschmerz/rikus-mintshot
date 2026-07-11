@@ -8,6 +8,16 @@ label lang
     kernel /live/vmlinuz
     append initrd=/live/initrd.img boot=live ${ifnames_opt} ${netconfig_opt} username={LIVEUSER} locales=en_US.UTF-8 keyboard-layouts=us
 
+label persist
+	menu label ${DISTRO} (mit Persistenz — Änderungen bleiben / persistent)
+    kernel /live/vmlinuz
+    append initrd=/live/initrd.img boot=live persistence persistence-encryption=none ${ifnames_opt} ${netconfig_opt} username={LIVEUSER} locales={LOCALE} keyboard-layouts={KEYBOARD} timezone={TIMEZONE}
+
+label persistram
+	menu label ${DISTRO} (Persistenz im RAM — schont den USB / RAM)
+    kernel /live/vmlinuz
+    append initrd=/live/initrd.img boot=live persistence persistence-encryption=none persistence-read-only ${ifnames_opt} ${netconfig_opt} username={LIVEUSER} locales={LOCALE} keyboard-layouts={KEYBOARD} timezone={TIMEZONE}
+
 label toram
 	menu label ${DISTRO} (in den RAM laden / load to RAM)
     kernel /live/vmlinuz
