@@ -11,11 +11,11 @@
 #     not into an artificial "mint" user.
 #   * The installer (Calamares) does a 1:1 clone install: no user-creation page,
 #     no locale/keyboard pages — it only prepares the target disk and the bootloader.
-#   * The app itself lives in /opt/linux-mint-snapshot (installed by the assistant),
+#   * The app itself lives in /opt/rikus-mintshot (installed by the assistant),
 #     so it is part of every clone — like mx-snapshot on MX Linux.
 #   * Everything else proven in v4 stays: language table DE/EN, dynamic distro/user
 #     values, sudo -n/pkexec, first-start assistant, crash-safe build engine.
-#   * Self test: MINT_SNAP_TEST=1 ./linux-mint-snapshot.py --selbsttest
+#   * Self test: MINT_SNAP_TEST=1 ./rikus-mintshot.py --selbsttest
 
 import os
 import re
@@ -32,11 +32,11 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "5.4"
+VERSION = "5.5"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
-SYSTEM_ORDNER = '/opt/linux-mint-snapshot'
+SYSTEM_ORDNER = '/opt/rikus-mintshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
-KONFIG_ORDNER = os.path.expanduser('~/.config/linux-mint-snapshot')
+KONFIG_ORDNER = os.path.expanduser('~/.config/rikus-mintshot')
 LOG_DATEI = os.path.join(KONFIG_ORDNER, 'letzter-lauf.log')
 PID_DATEI = os.path.join(KONFIG_ORDNER, 'lauf.pid')
 EINRICHT_LOG = os.path.join(KONFIG_ORDNER, 'einrichtung.log')
@@ -396,7 +396,7 @@ ESP_TYP_GUID = 'C12A7328-F81F-11D2-BA4B-00A0C93EC93B'
 
 def _system_app_version():
     try:
-        for zeile in open(os.path.join(SYSTEM_ORDNER, 'linux-mint-snapshot.py')):
+        for zeile in open(os.path.join(SYSTEM_ORDNER, 'rikus-mintshot.py')):
             m = re.match(r'VERSION = "([^"]+)"', zeile)
             if m:
                 return m.group(1)
@@ -506,14 +506,14 @@ if [ "{APP_ORDNER}" != "{SYSTEM_ORDNER}" ]; then
   cp -r "{APP_ORDNER}/." "{SYSTEM_ORDNER}/"
   rm -rf "{SYSTEM_ORDNER}/__pycache__"
 fi
-chmod 0755 "{SYSTEM_ORDNER}/linux-mint-snapshot.py"
-cat > /usr/share/applications/linux-mint-snapshot.desktop <<'MENUE'
+chmod 0755 "{SYSTEM_ORDNER}/rikus-mintshot.py"
+cat > /usr/share/applications/rikus-mintshot.desktop <<'MENUE'
 [Desktop Entry]
 Type=Application
 Name=Rikus Mintshot
 Comment=1:1 clone of your system as a bootable ISO / 1:1-Klon deines Systems als startfähige ISO
 Comment[de]=1:1-Klon deines Linux-Mint-Systems als startfähige ISO — mit einem Klick
-Exec=python3 {SYSTEM_ORDNER}/linux-mint-snapshot.py
+Exec=python3 {SYSTEM_ORDNER}/rikus-mintshot.py
 Icon={SYSTEM_ORDNER}/daten/icon.png
 Terminal=false
 Categories=System;Utility;
@@ -716,15 +716,15 @@ def menue_eintrag_anlegen():
     """Bruecke fuer den allerersten Start aus dem Home-Ordner: Nutzer-Menueeintrag,
     bis die Einrichtung den systemweiten Eintrag (/usr/share) anlegt — danach
     raeumt sich die Bruecke selbst weg (kein Doppel im Startmenue)."""
-    nutzer_eintrag = os.path.expanduser('~/.local/share/applications/linux-mint-snapshot.desktop')
-    if os.path.exists('/usr/share/applications/linux-mint-snapshot.desktop'):
+    nutzer_eintrag = os.path.expanduser('~/.local/share/applications/rikus-mintshot.desktop')
+    if os.path.exists('/usr/share/applications/rikus-mintshot.desktop'):
         if os.path.exists(nutzer_eintrag):
             try:
                 os.remove(nutzer_eintrag)
             except OSError:
                 pass
         return
-    exec_zeile = f'Exec=python3 "{os.path.join(APP_ORDNER, "linux-mint-snapshot.py")}"'
+    exec_zeile = f'Exec=python3 "{os.path.join(APP_ORDNER, "rikus-mintshot.py")}"'
     inhalt = f"""[Desktop Entry]
 Type=Application
 Name=Rikus Mintshot
