@@ -750,6 +750,10 @@ class SnapshotApp(Gtk.Window):
         # auch die unteren Knoepfe (USB schreiben) immer erreichbar bleiben.
         scroll_aussen = Gtk.ScrolledWindow()
         scroll_aussen.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        # Feste (nicht ueberlagernde) Scrollleiste: sonst legt sich die aeussere
+        # Overlay-Leiste ueber die innere von "Technische Einzelheiten" -> sieht aus
+        # wie 2 sich ueberschneidende Schieberegler.
+        scroll_aussen.set_overlay_scrolling(False)
         self.add(scroll_aussen)
         haupt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         scroll_aussen.add(haupt)
