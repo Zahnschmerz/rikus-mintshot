@@ -82,8 +82,9 @@ T_ALLE = {
   'knopf_ueber': "ℹ️ Über",
   'frame_auswahl': " Was kommt in den Schnappschuss? ",
   'klon_info': "Wähle, was in den Schnappschuss kommt:",
-  'home_ohne': "Nur System (root) — klein & schnell  (★ empfohlen)",
-  'home_mit': "System (root) + Home — alles dabei (deine Dateien & dein Konto)",
+  'home_ohne': "Nur System (root) — ganz nackt, ohne persönliche Einstellungen",
+  'home_einstellungen': "System + meine Einstellungen — schlank & brauchbar  (★ empfohlen)",
+  'home_mit': "System + Home — alles komplett (auch Daten, Mails & KI-Modelle)",
   'weglassen_titel': "Einzelne große Ordner weglassen? (Häkchen = bleibt draußen)",
   'fortgeschritten_titel': "⚙️  Für Fortgeschrittene: einzelne Ordner weglassen",
   'privat_hinweis': ("🔒 Der Stick enthält dein Konto und deine Zugänge —\n"
@@ -180,8 +181,9 @@ T_ALLE = {
   'knopf_ueber': "ℹ️ About",
   'frame_auswahl': " What goes into the snapshot? ",
   'klon_info': "Choose what goes into the snapshot:",
-  'home_ohne': "System (root) only — small & fast  (★ recommended)",
-  'home_mit': "System (root) + Home — everything (your files & account)",
+  'home_ohne': "System (root) only — bare, without your settings",
+  'home_einstellungen': "System + my settings — lean & ready to use  (★ recommended)",
+  'home_mit': "System + Home — everything (data, mail & AI models)",
   'weglassen_titel': "Leave out individual big folders? (checked = stays out)",
   'fortgeschritten_titel': "⚙️  Advanced: leave out individual folders",
   'privat_hinweis': ("🔒 The stick contains your account and credentials —\n"
@@ -537,6 +539,35 @@ KLON_AUSSCHLUESSE = '''
 - /root/.cache/*
 '''
 
+# 3. Modus "System + meine Einstellungen": das Home BLEIBT (alle Einstellungen/Konten),
+# aber der grosse Datenberg + jederzeit neu ladbare Sachen fliegen raus. So wird der Klon
+# schlank UND sofort brauchbar. Wer etwas davon behalten will -> Expertenmodus (Haekchen).
+# (~/.cache ist oben schon global ausgeschlossen.)
+EINSTELLUNGEN_AUSSCHLUESSE = '''
+# --- neu ladbare Zwischenspeicher (bauen sich wieder auf) ---
+- /home/*/.npm/*
+- /home/*/.local/share/uv/*
+# --- lokale KI-Modelle (viele GB, jederzeit neu herunterladbar) ---
+- /home/*/.ollama/*
+- /home/*/.hermes/*
+# --- grosse Spiele ---
+- /home/*/.minecraft/*
+# --- persoenliche Datenordner (Medien/Dokumente, deutsch + englisch benannt) ---
+- /home/*/Downloads/*
+- /home/*/Herunterladungen/*
+- /home/*/Bilder/*
+- /home/*/Pictures/*
+- /home/*/Videos/*
+- /home/*/Musik/*
+- /home/*/Music/*
+- /home/*/Dokumente/*
+- /home/*/Documents/*
+- /home/*/Öffentlich/*
+- /home/*/Public/*
+- /home/*/Vorlagen/*
+- /home/*/Templates/*
+'''
+
 def _shim_pfad():
     return SHIM_SIGNED if os.path.exists(SHIM_SIGNED) else SHIM_SIGNED_ALT
 
@@ -598,10 +629,11 @@ rm -rf "$SB_WORK" 2>/dev/null || true
 echo "All finished!"
 '''
 
-def konfig_anlegen(weglassen=None, mit_home=True):
+def konfig_anlegen(weglassen=None, modus='voll'):
     """Klon-Konfiguration frisch schreiben (kein Root noetig). weglassen = Liste
     absoluter Ordner-Pfade, deren INHALT draussen bleibt (Haekchen).
-    mit_home=False -> das ganze /home bleibt draussen (schlanke 'Nur System'-ISO)."""
+    modus: 'ohne' = ganzes /home raus (nacktes System); 'einstellungen' = Home BLEIBT,
+    aber Datenberg/KI-Modelle raus (schlank + brauchbar); 'voll' = 1:1-Klon mit allem."""
     os.makedirs(KONFIG_ORDNER, exist_ok=True)
     basis_conf = '/etc/refractasnapshot.conf'
     basis_liste = '/usr/lib/refractasnapshot/snapshot_exclude.list'
@@ -625,10 +657,14 @@ def konfig_anlegen(weglassen=None, mit_home=True):
                 continue
             zeilen.append(zeile.rstrip('\n'))
     liste = "\n".join(zeilen) + KLON_AUSSCHLUESSE
-    if not mit_home:
-        # "Ohne Homeordner": persoenliche Daten bleiben KOMPLETT draussen -> schlanke
+    if modus == 'ohne':
+        # "Nur System": persoenliche Daten bleiben KOMPLETT draussen -> schlanke
         # ISO. Der Live-Nutzer bekommt ohnehin ein frisches Home (live-config).
-        liste += "\n# Ohne Homeordner gewaehlt: alle persoenlichen Ordner ausschliessen\n- /home/*\n"
+        liste += "\n# Nur System gewaehlt: alle persoenlichen Ordner ausschliessen\n- /home/*\n"
+    elif modus == 'einstellungen':
+        # "System + meine Einstellungen": Home BLEIBT (Konfig/Konten/Pika/Mails), nur
+        # der grosse Datenberg + neu ladbare Sachen (KI-Modelle, Caches) fliegen raus.
+        liste += EINSTELLUNGEN_AUSSCHLUESSE
     if weglassen:
         liste += "\n# Vom Nutzer abgewaehlte grosse Ordner (Haekchen in der App):\n"
         for pfad in weglassen:
@@ -795,9 +831,11 @@ class SnapshotApp(Gtk.Window):
 
         # Home-Wahl: ohne Homeordner (schlank, Standard) ODER mit Homeordner (1:1-Klon)
         self.rb_ohne_home = Gtk.RadioButton.new_with_label_from_widget(None, T['home_ohne'])
+        self.rb_einstellungen = Gtk.RadioButton.new_with_label_from_widget(self.rb_ohne_home, T['home_einstellungen'])
         self.rb_mit_home = Gtk.RadioButton.new_with_label_from_widget(self.rb_ohne_home, T['home_mit'])
-        self.rb_ohne_home.set_active(True)   # Standard: schlank, ohne persoenliche Daten
+        self.rb_einstellungen.set_active(True)   # Standard: schlank ABER brauchbar (Einstellungen bleiben)
         box_wahl.pack_start(self.rb_ohne_home, False, False, 0)
+        box_wahl.pack_start(self.rb_einstellungen, False, False, 0)
         box_wahl.pack_start(self.rb_mit_home, False, False, 0)
 
         # "Fuer Fortgeschrittene": Einzel-Ordner-Haekchen in einen ausklappbaren
@@ -1140,8 +1178,13 @@ class SnapshotApp(Gtk.Window):
         except OSError:
             pass
         if not self.selbsttest:
-            mit_home = self.rb_mit_home.get_active()
-            if not konfig_anlegen(weglassen, mit_home):
+            if self.rb_ohne_home.get_active():
+                modus = 'ohne'
+            elif self.rb_einstellungen.get_active():
+                modus = 'einstellungen'
+            else:
+                modus = 'voll'
+            if not konfig_anlegen(weglassen, modus):
                 self.melde(Gtk.MessageType.ERROR, T['konfig_fehlt'],
                            '/etc/refractasnapshot.conf')
                 return
