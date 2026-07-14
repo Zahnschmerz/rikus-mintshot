@@ -32,7 +32,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "5.3"
+VERSION = "5.4"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/linux-mint-snapshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -81,15 +81,17 @@ T_ALLE = {
   'herausgeber': "Herausgeber: Gilbert Rikus · GPL-3 · v{v}",
   'knopf_ueber': "ℹ️ Über",
   'frame_auswahl': " Was kommt in den Schnappschuss? ",
-  'klon_info': ("Der Schnappschuss ist ein 1:1-Klon: dein Konto, deine Einstellungen und\n"
-                "gespeicherten Anmeldungen sind immer dabei — alles funktioniert wie gewohnt."),
-  'weglassen_titel': "Große Ordner weglassen? (Häkchen = bleibt draußen, ISO wird kleiner)",
+  'klon_info': "Wähle, was in den Schnappschuss kommt:",
+  'home_ohne': "Nur System (root) — klein & schnell  (★ empfohlen)",
+  'home_mit': "System (root) + Home — alles dabei (deine Dateien & dein Konto)",
+  'weglassen_titel': "Einzelne große Ordner weglassen? (Häkchen = bleibt draußen)",
+  'fortgeschritten_titel': "⚙️  Für Fortgeschrittene: einzelne Ordner weglassen",
   'privat_hinweis': ("🔒 Der Stick enthält dein Konto und deine Zugänge —\n"
                      "sicher verwahren und nicht an Fremde weitergeben."),
   'groesse_offen': "wird gemessen …",
   'anzeige_vms': "Virtuelle Maschinen (VMs)",
   'anzeige_steam': "Steam-Spiele",
-  'anzeige_flatpak': "Flatpak-Programmdaten",
+  'anzeige_flatpak': "Flatpak-Programme (systemweit)",
   'zusatz_knopf': "➕ Weiteren Ordner weglassen …",
   'zusatz_titel': "Ordner zum Weglassen wählen",
   'zusatz_add': "Weglassen",
@@ -177,15 +179,17 @@ T_ALLE = {
   'herausgeber': "Published by Gilbert Rikus · GPL-3 · v{v}",
   'knopf_ueber': "ℹ️ About",
   'frame_auswahl': " What goes into the snapshot? ",
-  'klon_info': ("The snapshot is a 1:1 clone: your account, settings and saved logins\n"
-                "are always included — everything keeps working as usual."),
-  'weglassen_titel': "Leave out big folders? (checked = stays out, smaller ISO)",
+  'klon_info': "Choose what goes into the snapshot:",
+  'home_ohne': "System (root) only — small & fast  (★ recommended)",
+  'home_mit': "System (root) + Home — everything (your files & account)",
+  'weglassen_titel': "Leave out individual big folders? (checked = stays out)",
+  'fortgeschritten_titel': "⚙️  Advanced: leave out individual folders",
   'privat_hinweis': ("🔒 The stick contains your account and credentials —\n"
                      "keep it in a safe place and never hand it to strangers."),
   'groesse_offen': "measuring …",
   'anzeige_vms': "Virtual machines (VMs)",
   'anzeige_steam': "Steam games",
-  'anzeige_flatpak': "Flatpak app data",
+  'anzeige_flatpak': "Flatpak apps (system-wide)",
   'zusatz_knopf': "➕ Leave out another folder …",
   'zusatz_titel': "Choose a folder to leave out",
   'zusatz_add': "Leave out",
@@ -360,11 +364,14 @@ def dicke_ordner():
         if os.path.isdir(pfad) and pfad != home:
             kandidaten.append((pfad, os.path.basename(pfad.rstrip('/'))))
     for unterordner, anzeige in (('VMs', T['anzeige_vms']),
-                                 ('.local/share/Steam', T['anzeige_steam']),
-                                 ('.var/app', T['anzeige_flatpak'])):
+                                 ('.local/share/Steam', T['anzeige_steam'])):
         pfad = os.path.join(home, unterordner)
         if os.path.isdir(pfad):
             kandidaten.append((pfad, anzeige))
+    # Flatpak: die GROSSEN Programme liegen systemweit in /var/lib/flatpak (mehrere
+    # GB, NICHT im Home) — genau die soll man weglassen koennen (ehrliches Kaestchen).
+    if os.path.isdir('/var/lib/flatpak'):
+        kandidaten.append(('/var/lib/flatpak', T['anzeige_flatpak']))
     return kandidaten
 
 # ======================= Ersteinrichtung =======================
@@ -583,9 +590,10 @@ rm -rf "$SB_WORK" 2>/dev/null || true
 echo "All finished!"
 '''
 
-def konfig_anlegen(weglassen=None):
+def konfig_anlegen(weglassen=None, mit_home=True):
     """Klon-Konfiguration frisch schreiben (kein Root noetig). weglassen = Liste
-    absoluter Ordner-Pfade, deren INHALT draussen bleibt (Haekchen)."""
+    absoluter Ordner-Pfade, deren INHALT draussen bleibt (Haekchen).
+    mit_home=False -> das ganze /home bleibt draussen (schlanke 'Nur System'-ISO)."""
     os.makedirs(KONFIG_ORDNER, exist_ok=True)
     basis_conf = '/etc/refractasnapshot.conf'
     basis_liste = '/usr/lib/refractasnapshot/snapshot_exclude.list'
@@ -600,8 +608,8 @@ def konfig_anlegen(weglassen=None):
     except OSError:
         return False
 
-    # Ausschluss-Liste: Basis-Liste OHNE deren /home-Regeln (der Klon nimmt das
-    # Home ja mit!) + eigene Bremsen-Liste + die abgewaehlten dicken Ordner.
+    # Ausschluss-Liste: Basis-Liste OHNE deren /home-Regeln (wir regeln das Home
+    # selbst, siehe unten) + eigene Bremsen-Liste + die abgewaehlten dicken Ordner.
     zeilen = []
     if os.path.exists(basis_liste):
         for zeile in open(basis_liste):
@@ -609,6 +617,10 @@ def konfig_anlegen(weglassen=None):
                 continue
             zeilen.append(zeile.rstrip('\n'))
     liste = "\n".join(zeilen) + KLON_AUSSCHLUESSE
+    if not mit_home:
+        # "Ohne Homeordner": persoenliche Daten bleiben KOMPLETT draussen -> schlanke
+        # ISO. Der Live-Nutzer bekommt ohnehin ein frisches Home (live-config).
+        liste += "\n# Ohne Homeordner gewaehlt: alle persoenlichen Ordner ausschliessen\n- /home/*\n"
     if weglassen:
         liste += "\n# Vom Nutzer abgewaehlte grosse Ordner (Haekchen in der App):\n"
         for pfad in weglassen:
@@ -765,13 +777,26 @@ class SnapshotApp(Gtk.Window):
         rahmen.add(box_wahl)
 
         lbl_klon = Gtk.Label()
-        lbl_klon.set_markup(f"<span size='small' foreground='#3a7d3a'>{GLib.markup_escape_text(T['klon_info'])}</span>")
+        lbl_klon.set_markup(f"<b>{GLib.markup_escape_text(T['klon_info'])}</b>")
         lbl_klon.set_halign(Gtk.Align.START)
         box_wahl.pack_start(lbl_klon, False, False, 0)
 
+        # Home-Wahl: ohne Homeordner (schlank, Standard) ODER mit Homeordner (1:1-Klon)
+        self.rb_ohne_home = Gtk.RadioButton.new_with_label_from_widget(None, T['home_ohne'])
+        self.rb_mit_home = Gtk.RadioButton.new_with_label_from_widget(self.rb_ohne_home, T['home_mit'])
+        self.rb_ohne_home.set_active(True)   # Standard: schlank, ohne persoenliche Daten
+        box_wahl.pack_start(self.rb_ohne_home, False, False, 0)
+        box_wahl.pack_start(self.rb_mit_home, False, False, 0)
+
+        # "Fuer Fortgeschrittene": Einzel-Ordner-Haekchen in einen ausklappbaren
+        # Bereich, standardmaessig ZUGEKLAPPT -> Neulinge sehen nur die 2 Knoepfe oben.
+        exp_fort = Gtk.Expander(label=T['fortgeschritten_titel'])
+        exp_fort.set_expanded(False)
+        box_fort = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        exp_fort.add(box_fort)
         lbl_weg = Gtk.Label(label=T['weglassen_titel'])
         lbl_weg.set_halign(Gtk.Align.START)
-        box_wahl.pack_start(lbl_weg, False, False, 4)
+        box_fort.pack_start(lbl_weg, False, False, 4)
 
         gemerkt = []
         try:
@@ -794,12 +819,13 @@ class SnapshotApp(Gtk.Window):
                     self._check_hinzu(pfad, self._kurzname(pfad), pfad in gemerkt)
         except (OSError, ValueError):
             pass
-        box_wahl.pack_start(self.gitter, False, False, 0)
+        box_fort.pack_start(self.gitter, False, False, 0)
         # Knopf: beliebigen weiteren Ordner weglassen (wie MX Snapshot)
         knopf_ordner = Gtk.Button(label=T['zusatz_knopf'])
         knopf_ordner.set_halign(Gtk.Align.START)
         knopf_ordner.connect('clicked', self.ordner_waehlen)
-        box_wahl.pack_start(knopf_ordner, False, False, 2)
+        box_fort.pack_start(knopf_ordner, False, False, 2)
+        box_wahl.pack_start(exp_fort, False, False, 6)
 
         lbl_privat = Gtk.Label()
         lbl_privat.set_markup(f"<span size='small' foreground='#a05050'>{GLib.markup_escape_text(T['privat_hinweis'])}</span>")
@@ -1102,7 +1128,8 @@ class SnapshotApp(Gtk.Window):
         except OSError:
             pass
         if not self.selbsttest:
-            if not konfig_anlegen(weglassen):
+            mit_home = self.rb_mit_home.get_active()
+            if not konfig_anlegen(weglassen, mit_home):
                 self.melde(Gtk.MessageType.ERROR, T['konfig_fehlt'],
                            '/etc/refractasnapshot.conf')
                 return
