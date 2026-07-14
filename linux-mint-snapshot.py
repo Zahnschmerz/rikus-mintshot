@@ -84,7 +84,7 @@ T_ALLE = {
   'klon_info': "Wähle, was in den Schnappschuss kommt:",
   'home_ohne': "Nur System (root) — ganz nackt, ohne persönliche Einstellungen",
   'home_einstellungen': "System + meine Einstellungen — schlank & brauchbar  (★ empfohlen)",
-  'home_mit': "System + Home — alles komplett (auch Daten, Mails & KI-Modelle)",
+  'home_mit': "System + Home — alles komplett (deine Dateien, Mails & Konto)",
   'weglassen_titel': "Einzelne große Ordner weglassen? (Häkchen = bleibt draußen)",
   'fortgeschritten_titel': "⚙️  Für Fortgeschrittene: einzelne Ordner weglassen",
   'privat_hinweis': ("🔒 Der Stick enthält dein Konto und deine Zugänge —\n"
@@ -183,7 +183,7 @@ T_ALLE = {
   'klon_info': "Choose what goes into the snapshot:",
   'home_ohne': "System (root) only — bare, without your settings",
   'home_einstellungen': "System + my settings — lean & ready to use  (★ recommended)",
-  'home_mit': "System + Home — everything (data, mail & AI models)",
+  'home_mit': "System + Home — everything (your files, mail & account)",
   'weglassen_titel': "Leave out individual big folders? (checked = stays out)",
   'fortgeschritten_titel': "⚙️  Advanced: leave out individual folders",
   'privat_hinweis': ("🔒 The stick contains your account and credentials —\n"
@@ -547,7 +547,7 @@ EINSTELLUNGEN_AUSSCHLUESSE = '''
 # --- neu ladbare Zwischenspeicher (bauen sich wieder auf) ---
 - /home/*/.npm/*
 - /home/*/.local/share/uv/*
-# --- lokale KI-Modelle (viele GB, jederzeit neu herunterladbar) ---
+# --- grosse, jederzeit neu herunterladbare Pakete (viele GB) ---
 - /home/*/.ollama/*
 - /home/*/.hermes/*
 # --- grosse Spiele ---
