@@ -633,7 +633,7 @@ def konfig_anlegen(weglassen=None, modus='voll'):
     """Klon-Konfiguration frisch schreiben (kein Root noetig). weglassen = Liste
     absoluter Ordner-Pfade, deren INHALT draussen bleibt (Haekchen).
     modus: 'ohne' = ganzes /home raus (nacktes System); 'einstellungen' = Home BLEIBT,
-    aber Datenberg/KI-Modelle raus (schlank + brauchbar); 'voll' = 1:1-Klon mit allem."""
+    aber der grosse Datenberg raus (schlank + brauchbar); 'voll' = 1:1-Klon mit allem."""
     os.makedirs(KONFIG_ORDNER, exist_ok=True)
     basis_conf = '/etc/refractasnapshot.conf'
     basis_liste = '/usr/lib/refractasnapshot/snapshot_exclude.list'
@@ -663,7 +663,7 @@ def konfig_anlegen(weglassen=None, modus='voll'):
         liste += "\n# Nur System gewaehlt: alle persoenlichen Ordner ausschliessen\n- /home/*\n"
     elif modus == 'einstellungen':
         # "System + meine Einstellungen": Home BLEIBT (Konfig/Konten/Pika/Mails), nur
-        # der grosse Datenberg + neu ladbare Sachen (KI-Modelle, Caches) fliegen raus.
+        # der grosse Datenberg + neu ladbare Sachen (grosse Pakete, Caches) fliegen raus.
         liste += EINSTELLUNGEN_AUSSCHLUESSE
     if weglassen:
         liste += "\n# Vom Nutzer abgewaehlte grosse Ordner (Haekchen in der App):\n"
