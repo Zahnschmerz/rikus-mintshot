@@ -14,10 +14,16 @@ BASE=$(basename "$DEV")
 
 # --- Sicherheitsnetze ---
 [ -b "$DEV" ] || { echo "FEHLER: $DEV ist kein Blockgeraet."; exit 1; }
-[ "$(cat /sys/block/$BASE/removable 2>/dev/null)" = "1" ] || {
-  echo "FEHLER: $DEV ist KEIN Wechseldatentraeger — abgebrochen (Schutz)."; exit 1; }
-# muss die Snapshot-ISO tragen: Partition 1 = ISO9660
-if ! blkid "${DEV}1" 2>/dev/null | grep -qi 'iso9660'; then
+# Schutz vor internen Platten: erlaubt sind Wechseldatentraeger (removable=1, klassische
+# USB-Sticks) ODER Geraete am USB-Bus (externe USB-SSDs/HDDs melden sich oft als removable=0,
+# haengen aber am USB). Interne SATA/NVMe sind weder removable noch am USB-Bus -> bleiben geblockt.
+REMOVABLE=$(cat "/sys/block/$BASE/removable" 2>/dev/null || echo 0)
+AM_USB=0; readlink -f "/sys/block/$BASE" 2>/dev/null | grep -q '/usb[0-9]*/' && AM_USB=1
+if [ "$REMOVABLE" != "1" ] && [ "$AM_USB" != "1" ]; then
+  echo "FEHLER: $DEV ist keine Wechsel-/USB-Platte (interne Platte? — abgebrochen zum Schutz)."; exit 1; fi
+# muss die Snapshot-ISO tragen: Partition 1 = ISO9660. lsblk statt blkid -> liest LIVE
+# (blkid nutzt einen Cache, der direkt nach dem ISO-Schreiben veraltet sein kann -> Fehlalarm).
+if ! lsblk -no FSTYPE "${DEV}1" 2>/dev/null | grep -qi 'iso9660'; then
   echo "FEHLER: Auf $DEV liegt keine Snapshot-ISO (ISO9660). Erst die ISO schreiben."; exit 1; fi
 # gibt es die Kiste schon? Dann pruefen, ob sie VOLLSTAENDIG ist — sonst reparieren.
 # (Haeufigster Fehler: das Anlegen brach nach dem Formatieren ab, die Kiste blieb

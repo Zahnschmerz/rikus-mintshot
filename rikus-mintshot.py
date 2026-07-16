@@ -1714,7 +1714,10 @@ done'''], timeout=25, check=False)
         dev = f"/dev/{s[0]}"
         modell = s[3].strip() if len(s) > 3 else ''
         groesse = s[4].strip() if len(s) > 4 else ''
-        blk = subprocess.run(['blkid', f'{dev}1'], capture_output=True, text=True).stdout.lower()
+        # lsblk statt blkid: liest LIVE (blkid nutzt einen Cache, der direkt nach dem
+        # ISO-Schreiben veraltet sein kann -> faelschlich "kein Schnappschuss").
+        blk = subprocess.run(['lsblk', '-no', 'FSTYPE', f'{dev}1'],
+                             capture_output=True, text=True).stdout.lower()
         if 'iso9660' not in blk:
             self.melde(Gtk.MessageType.WARNING,
                        'Erst die ISO schreiben' if de else 'Write the ISO first',
