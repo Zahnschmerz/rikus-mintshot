@@ -32,7 +32,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "5.5"
+VERSION = "6.0"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/rikus-mintshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -132,6 +132,7 @@ T_ALLE = {
   'spalte_datei': "Datei", 'spalte_groesse': "Größe", 'spalte_erstellt': "Erstellt",
   'knopf_stick': "🖊️ Auf USB-Stick schreiben",
   'knopf_pruef': "🔍 Stick kontrollieren (Prüfsumme)",
+  'knopf_persist': "💾 Persistenz einrichten",
   'knopf_loesch': "🗑️ Löschen",
   'ablage': "Ablageort: <b>{ordner}</b>   ·   Freier Platz: <b>{platz}</b>",
   'erst_auswaehlen_titel': "Bitte erst auswählen",
@@ -231,6 +232,7 @@ T_ALLE = {
   'spalte_datei': "File", 'spalte_groesse': "Size", 'spalte_erstellt': "Created",
   'knopf_stick': "🖊️ Write to USB stick",
   'knopf_pruef': "🔍 Verify stick (checksum)",
+  'knopf_persist': "💾 Set up persistence",
   'knopf_loesch': "🗑️ Delete",
   'ablage': "Location: <b>{ordner}</b>   ·   Free space: <b>{platz}</b>",
   'erst_auswaehlen_titel': "Please select first",
@@ -491,6 +493,14 @@ mkdir -p /usr/local/sbin
 install -m 0755 "{DATEN}/scripts/rikus-mintshot-home-fix" /usr/local/sbin/
 mkdir -p /etc/skel/Desktop
 install -m 0755 "{DATEN}/desktop/system-installieren.desktop" /etc/skel/Desktop/
+
+# Persistenz: Speicher-Dienst fuer den Stick-schonenden Modus (persistence-read-only).
+# Dort liegen die Aenderungen im RAM (tmpfs) — beim Herunterfahren schreibt dieser
+# Dienst sie in die Persistenz-Kiste zurueck. Er prueft selbst, ob er gebraucht wird
+# (nur bei "persistence-read-only" in der Kernel-Zeile), sonst beendet er sich sofort.
+install -m 0755 "{DATEN}/persistenz/rikus-mintshot-persist-save" /usr/local/sbin/
+install -m 0644 "{DATEN}/persistenz/rikus-mintshot-persist-save.service" /etc/systemd/system/
+systemctl enable rikus-mintshot-persist-save.service >/dev/null 2>&1 || true
 
 # Calamares aus dem normalen Menue verstecken (Symbol auf dem Live-Schreibtisch ist der Weg)
 if [ -f /usr/share/applications/calamares.desktop ]; then
@@ -936,9 +946,11 @@ class SnapshotApp(Gtk.Window):
         self.knopf_stick.connect('clicked', self.stick_schreiben)
         self.knopf_pruef = Gtk.Button(label=T['knopf_pruef'])
         self.knopf_pruef.connect('clicked', self.stick_pruefen)
+        self.knopf_persist = Gtk.Button(label=T['knopf_persist'])
+        self.knopf_persist.connect('clicked', self.persistenz_anlegen)
         self.knopf_loesch = Gtk.Button(label=T['knopf_loesch'])
         self.knopf_loesch.connect('clicked', self.iso_loeschen)
-        for k in (self.knopf_stick, self.knopf_pruef, self.knopf_loesch):
+        for k in (self.knopf_stick, self.knopf_pruef, self.knopf_persist, self.knopf_loesch):
             zeile.pack_start(k, False, False, 0)
         box_liste.pack_start(zeile, False, False, 0)
         haupt.pack_start(rahmen_liste, False, False, 0)
@@ -1486,6 +1498,91 @@ done'''], timeout=25, check=False)
                            T['stick_falsch_text'].format(geraet=geraet))
         except Exception as fehler:
             self.melde(Gtk.MessageType.ERROR, T['pruef_fehler'], str(fehler))
+        finally:
+            self.lauf_aktiv = False
+            self.setze_phase(T['bereit_kurz'])
+
+    # ================= Persistenz-Kiste auf dem Stick =================
+
+    def persistenz_anlegen(self, _knopf):
+        de = SPRACHE == 'de'
+        try:
+            lsblk = subprocess.run(['lsblk', '-nd', '-o', 'NAME,TRAN,TYPE,MODEL,SIZE'],
+                                   capture_output=True, text=True).stdout
+        except Exception as fehler:
+            self.melde(Gtk.MessageType.ERROR, 'lsblk', str(fehler)); return
+        sticks = [z.split(None, 4) for z in lsblk.splitlines()
+                  if len(z.split()) >= 3 and z.split()[1] == 'usb' and z.split()[2] == 'disk']
+        if not sticks:
+            self.melde(Gtk.MessageType.ERROR, T['kein_stick_titel'], T['kein_stick_text']); return
+        s = sticks[0]
+        dev = f"/dev/{s[0]}"
+        modell = s[3].strip() if len(s) > 3 else ''
+        groesse = s[4].strip() if len(s) > 4 else ''
+        blk = subprocess.run(['blkid', f'{dev}1'], capture_output=True, text=True).stdout.lower()
+        if 'iso9660' not in blk:
+            self.melde(Gtk.MessageType.WARNING,
+                       'Erst die ISO schreiben' if de else 'Write the ISO first',
+                       (f"Auf {dev} ({modell}) liegt noch kein Schnappschuss.\n"
+                        "Bitte erst mit »🖊️ Auf USB-Stick schreiben« die ISO aufspielen,\n"
+                        "dann hier die Persistenz einrichten.") if de else
+                       (f"No snapshot ISO on {dev} ({modell}) yet.\n"
+                        "Write the ISO with »🖊️ Write to USB stick« first, then set up persistence."))
+            return
+        d = Gtk.Dialog(title=T['knopf_persist'], transient_for=self, modal=True)
+        d.add_button('Abbrechen' if de else 'Cancel', Gtk.ResponseType.CANCEL)
+        d.add_button('Einrichten' if de else 'Set up', Gtk.ResponseType.OK)
+        box = d.get_content_area(); box.set_spacing(8); box.set_border_width(12)
+        box.add(Gtk.Label(label=f"USB-Stick: {dev}   {modell}   {groesse}", xalign=0))
+        box.add(Gtk.Label(
+            label=("Damit merkt sich dein Stick, was du änderst — sonst ist nach\n"
+                   "jedem Ausschalten alles weg. Im freien Platz NACH der ISO wird\n"
+                   "dafür ein Bereich angelegt; die ISO selbst bleibt unangetastet." if de else
+                   "This lets your stick remember your changes — otherwise everything is\n"
+                   "gone after each shutdown. A storage area is created in the free space\n"
+                   "AFTER the ISO; the ISO itself stays untouched."), xalign=0))
+        r_all = Gtk.RadioButton.new_with_label(
+            None, "Alles merken — System, Programme und Daten (empfohlen)" if de
+            else "Remember everything — system, programs and data (recommended)")
+        r_home = Gtk.RadioButton.new_with_label_from_widget(
+            r_all, "Nur meine persönlichen Daten merken" if de else "Remember only my personal data")
+        box.add(r_all); box.add(r_home)
+        d.show_all()
+        antwort = d.run()
+        modus = 'all' if r_all.get_active() else 'home'
+        d.destroy()
+        if antwort != Gtk.ResponseType.OK:
+            return
+        self.setze_phase('Persistenz wird eingerichtet ...' if de else 'Setting up persistence ...')
+        self.lauf_aktiv = True
+        GLib.timeout_add(200, self._puls)
+        threading.Thread(target=self._persist_arbeit, args=(dev, modus, de), daemon=True).start()
+
+    def _persist_arbeit(self, dev, modus, de):
+        skript = os.path.join(DATEN, 'persistenz', 'persistenz-auf-stick.sh')
+        try:
+            r = subprocess.run(self.root.split() + ['bash', skript, dev, modus],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                self.melde(Gtk.MessageType.INFO,
+                           'Persistenz ist eingerichtet' if de else 'Persistence is set up',
+                           ((r.stdout.strip() or 'Fertig.') +
+                            "\n\nBeim Starten vom Stick im Boot-Menü wählen:\n\n"
+                            "⭐ »mit Persistenz« — deine Änderungen bleiben.\n\n"
+                            "»mit Persistenz, Stick-schonend« — arbeitet im Arbeitsspeicher\n"
+                            "und speichert erst beim Ausschalten. Schont den Stick, aber:\n"
+                            "NICHT hart ausschalten, sonst ist die Sitzung weg.") if de else
+                           ((r.stdout.strip() or 'Done.') +
+                            "\n\nWhen booting the stick, pick from the boot menu:\n\n"
+                            "⭐ »with persistence« — your changes stay.\n\n"
+                            "»with persistence, gentle on the stick« — works in RAM and only\n"
+                            "saves on shutdown. Easier on the stick, but: do NOT power off\n"
+                            "abruptly, or the session is lost."))
+            else:
+                self.melde(Gtk.MessageType.ERROR, 'Fehler' if de else 'Error',
+                           (r.stdout + '\n' + r.stderr).strip() or ('Fehlgeschlagen' if de else 'Failed'))
+        except Exception as fehler:
+            self.melde(Gtk.MessageType.ERROR, 'Fehler' if de else 'Error', str(fehler))
         finally:
             self.lauf_aktiv = False
             self.setze_phase(T['bereit_kurz'])

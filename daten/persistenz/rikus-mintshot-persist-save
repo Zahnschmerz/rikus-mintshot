@@ -1,0 +1,71 @@
+#!/bin/sh
+# Rikus Mintshot — RAM-Persistenz "beim Ausschalten speichern".
+# Wird von rikus-mintshot-persist-save.service als ExecStop FRUEH beim Herunterfahren
+# ausgefuehrt (vor umount). Sichert die im RAM angesammelten Aenderungen
+# (Overlay-Upper) einmalig auf die Persistenz-Kiste (Label "persistence").
+# Nur wirksam, wenn mit "persistence persistence-read-only" gebootet wurde;
+# sonst passiert nichts (kein Overlay-Upper vorhanden).
+# 2026-07-11: Cache/Logs ausgeschlossen (sonst minutenlanges Haengen auf dem
+# langsamen Stick) + sichtbare Meldung fuer den Benutzer.
+
+# --- dem Benutzer sichtbar melden (er soll nicht denken, es haengt) ---
+melde() {
+  echo "$1" > /dev/kmsg 2>/dev/null || true
+  for T in /dev/tty1 /dev/console; do echo "  >> $1" > "$T" 2>/dev/null || true; done
+  if command -v plymouth >/dev/null 2>&1; then plymouth message --text="$1" 2>/dev/null || true; fi
+}
+
+# Nur im RAM-Modus (persistence-read-only) speichern. Im Sofort-Modus schreibt
+# live-boot direkt in die Kiste -> kein Save noetig (rsync waere sogar schaedlich).
+grep -q "persistence-read-only" /proc/cmdline 2>/dev/null || exit 0
+
+DEV=$(blkid -L persistence 2>/dev/null | head -n1)
+[ -n "$DEV" ] || exit 0
+
+# beschreibbaren Overlay-Teil (RAM) direkt aus /proc/mounts lesen (nicht raten)
+UP=$(awk '$2=="/" && $3=="overlay"{print $4}' /proc/mounts | tr ',' '\n' | grep '^upperdir=' | cut -d= -f2 | head -n1)
+# Fallback: live-boot legt den RAM-Overlay ueblicherweise hier ab
+{ [ -n "$UP" ] && [ -d "$UP" ]; } || UP=/run/live/overlay/rw
+[ -d "$UP" ] || { melde "Rikus Mintshot: nichts zu speichern."; exit 0; }
+
+melde "Rikus Mintshot: speichere deine Aenderungen auf den Stick — bitte NICHT ausschalten ..."
+
+# Kiste beschreibbar machen (read-only-Modus setzt sie block-schreibgeschuetzt)
+blockdev --setrw "$DEV" 2>/dev/null
+
+# bestehenden (read-only) Mount der Kiste beschreibbar remounten; sonst frisch mounten
+MP=$(awk -v d="$DEV" '$1==d {print $2}' /proc/mounts | head -n1)
+if [ -n "$MP" ]; then
+  mount -o remount,rw "$MP" 2>/dev/null || true
+  TGT="$MP"
+else
+  mkdir -p /run/lms-save
+  mount "$DEV" /run/lms-save 2>/dev/null || { melde "Rikus Mintshot: Speichern fehlgeschlagen — Stick nicht erreichbar."; exit 0; }
+  TGT=/run/lms-save
+fi
+mkdir -p "$TGT/rw"
+
+# Nur ECHTE Aenderungen sichern — Cache/Logs/Temporaeres WEGLASSEN. Sonst dauert
+# es auf dem langsamen USB-Stick minutenlang und fuellt die Kiste mit Muell.
+rsync -aHAX \
+  --exclude='var/cache/***' \
+  --exclude='var/tmp/***' \
+  --exclude='var/log/***' \
+  --exclude='var/lib/apt/lists/***' \
+  --exclude='var/crash/***' \
+  --exclude='tmp/***' \
+  --exclude='home/*/.cache/***' \
+  --exclude='root/.cache/***' \
+  --exclude='home/*/.thumbnails/***' \
+  --exclude='home/*/.local/share/Trash/***' \
+  --exclude='home/*/.mozilla/firefox/*/cache*/***' \
+  --exclude='home/*/.config/*/Cache/***' \
+  --exclude='home/*/.config/*/CachedData/***' \
+  --exclude='home/*/.config/*/Code Cache/***' \
+  --exclude='swapfile' \
+  "$UP/" "$TGT/rw/" 2>/dev/null \
+  || cp -a "$UP/." "$TGT/rw/" 2>/dev/null
+
+sync
+melde "Rikus Mintshot: Aenderungen gespeichert. Jetzt wird ausgeschaltet."
+exit 0

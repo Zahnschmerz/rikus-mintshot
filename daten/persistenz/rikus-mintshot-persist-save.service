@@ -1,0 +1,14 @@
+[Unit]
+Description=Rikus Mintshot — RAM-Persistenz beim Herunterfahren speichern
+After=basic.target
+Before=umount.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/local/sbin/rikus-mintshot-persist-save
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
