@@ -571,6 +571,9 @@ KLON_AUSSCHLUESSE = '''
 - /timeshift/*
 - /timeshift-btrfs/*
 - /swapfile
+- /swap-file
+- /swap.img
+- /swap.swap
 - /home/*/.cache/*
 - /home/*/.local/share/Trash/*
 - /home/*/mnt/*
@@ -672,6 +675,34 @@ rm -rf "$SB_WORK" 2>/dev/null || true
 echo "All finished!"
 '''
 
+def system_ballast_ausschluesse():
+    """Dinge, die einen Klon unnoetig VERVIELFACHEN wuerden — automatisch erkannt, egal
+    wie sie heissen. Ohne das laeuft die Platte beim Bau voll und die ISO wird unbrauchbar:
+      * Aktive Swap-Dateien (aus /proc/swaps) — der Name variiert (swapfile, swap-file, ...),
+        eine feste Liste verfehlt ihn leicht. Swap gehoert nie in einen Klon.
+      * Ein zweites Betriebssystem als 'Frugal'-Installation im Wurzelverzeichnis (antiX/MX:
+        ein Ordner mit einer 'linuxfs'-Datei). Dessen rootfs/homefs sind SPARSE-Dateien:
+        `du` zeigt wenige GB, beim Kopieren blaehen sie aber auf ihre volle Groesse auf
+        (z. B. 6,5 GB -> 113 GB). Eine zweite OS gehoert ohnehin nicht in den Klon.
+    Gibt absolute Pfade zurueck."""
+    aus = []
+    try:
+        for zeile in open('/proc/swaps').read().splitlines()[1:]:
+            pfad = zeile.split()[0] if zeile.split() else ''
+            if pfad.startswith('/') and not pfad.startswith('/dev/'):
+                aus.append(pfad)
+    except OSError:
+        pass
+    try:
+        for eintrag in os.scandir('/'):
+            if (eintrag.is_dir(follow_symlinks=False)
+                    and os.path.exists(os.path.join(eintrag.path, 'linuxfs'))):
+                aus.append(eintrag.path)
+    except OSError:
+        pass
+    return aus
+
+
 def konfig_anlegen(weglassen=None, modus='voll', iso_ordner=None, work_ordner=None):
     """Klon-Konfiguration frisch schreiben (kein Root noetig). weglassen = Liste
     absoluter Ordner-Pfade, deren INHALT draussen bleibt (Haekchen).
@@ -703,6 +734,12 @@ def konfig_anlegen(weglassen=None, modus='voll', iso_ordner=None, work_ordner=No
                 continue
             zeilen.append(zeile.rstrip('\n'))
     liste = "\n".join(zeilen) + KLON_AUSSCHLUESSE
+    ballast = system_ballast_ausschluesse()
+    if ballast:
+        liste += "\n# Automatisch erkannt (Swap-Datei / zweites Betriebssystem — wuerde den Klon aufblaehen):\n"
+        for pfad in ballast:
+            sicher = re.sub(r'([\[\]*?])', r'\\\1', pfad)   # rsync-Metazeichen woertlich nehmen
+            liste += f"- {sicher}\n"
     if modus == 'ohne':
         # "Nur System": persoenliche Daten bleiben KOMPLETT draussen -> schlanke
         # ISO. Der Live-Nutzer bekommt ohnehin ein frisches Home (live-config).
