@@ -72,9 +72,36 @@ Sie ist voreingestellt und für die meisten die richtige.
 > gespeicherten Zugänge**. Solche Sticks sicher verwahren und **nicht an Fremde
 > weitergeben!** Nur **„Nur System (root)"** ist frei von persönlichen Daten.
 
+### Virtuelle Maschinen
+
+Hast du virtuelle Maschinen (VirtualBox, GNOME Boxes oder QEMU/virt-manager),
+erscheint direkt unter der Auswahl eine **eigene Zeile**:
+
+> ☑ **Virtuelle Maschinen mitnehmen** — sie sind oft sehr groß (schnell 60 GB und mehr)
+
+**Der Haken ist gesetzt** — deine Maschinen kommen also mit, wie alles andere.
+**Nimm den Haken weg**, wenn du sie draußen lassen willst. Das spart schnell
+50 GB und mehr. Deine Wahl wird gemerkt; du musst sie nur einmal treffen.
+
+> 💡 **Warum eine eigene Zeile?** Virtuelle Maschinen liegen je nach Programm
+> **nicht** in deinem Persönlichen Ordner, sondern auf der Systemplatte
+> (QEMU/virt-manager legt sie z. B. unter `/var/lib/libvirt/images` ab). Sie
+> kommen deshalb bei **allen drei** Wahlmöglichkeiten mit — auch bei
+> „Nur System". Ohne diese Zeile würdest du sie ungewollt mitschleppen.
+
+> ⚠️ **Was NIE mitkommt — egal was du wählst:** Daten auf **anderen Platten**.
+> Alles, was unter `/media` oder `/mnt` eingehängt ist (externe Festplatten,
+> USB-Sticks, Netzlaufwerke, Cloud-Ordner), bleibt draußen. Das ist Absicht —
+> sonst würde jede angesteckte Platte den Klon aufblähen.
+> **Achtung, häufige Verwirrung:** Liegt deine virtuelle Maschine auf einer
+> **zweiten Platte**, ist sie **nicht** im Klon — auch wenn der Haken gesetzt
+> ist. Die Einstellungen des VM-Programms werden aber mitgeklont. Im Klon
+> startet dein VM-Programm dann und **listet die Maschine auf, aber die
+> Festplatten-Datei dazu fehlt.**
+
 **Für Fortgeschrittene:** Unter **„⚙️ Für Fortgeschrittene: einzelne Ordner
 weglassen"** kannst du zusätzlich genau bestimmen, was draußen bleibt
-(Häkchen = bleibt draußen), zum Beispiel virtuelle Maschinen oder Steam-Spiele.
+(Häkchen = bleibt draußen), zum Beispiel Steam-Spiele oder Flatpak-Programme.
 Mit **„➕ Weiteren Ordner weglassen …"** kommt jeder beliebige Ordner dazu.
 
 ### Dann: Schnappschuss bauen

@@ -31,6 +31,8 @@ Advanced users can fine-tune exactly which folders to leave out.
 - **The live stick boots straight into your own account and language** — no generic placeholder user.
 - **Boots with Secure Boot enabled** — the ISO carries the Microsoft-signed shim + Canonical-signed GRUB chain, so it starts on modern PCs (e.g. with a Windows dual-boot) *without* turning Secure Boot off. Works with it on or off.
 - **"Install System" icon right on the live desktop** (powered by Calamares) does a full takeover: no user-creation step, no re-entering language/timezone/keyboard — it's all already yours.
+- **Honest space preview before the build** — the program works out how big your clone will *really* be (instead of guessing) and warns only when it actually gets tight. No more builds dying halfway through.
+- **Virtual machines can be left out with one tick** — visible right at the mode choice. They often sit on the system drive and would otherwise come along unasked; that is easily 60 GB.
 - **German / English GUI**, chosen automatically from your system language.
 
 ## Requirements

@@ -71,9 +71,35 @@ It is preselected and right for most people.
 > such sticks in a safe place and **never hand them to strangers!** Only
 > **"System (root) only"** is free of personal data.
 
+### Virtual machines
+
+If you have virtual machines (VirtualBox, GNOME Boxes or QEMU/virt-manager), a
+**dedicated line** appears right below the three options:
+
+> ☑ **Include virtual machines** — they are often very large (60 GB and more)
+
+**The box is ticked** — so your machines come along, like everything else.
+**Untick it** to leave them out; that easily saves 50 GB or more. Your choice is
+remembered, so you only make it once.
+
+> 💡 **Why its own line?** Depending on the program, virtual machines do **not**
+> live in your home folder but on the system drive (QEMU/virt-manager puts them
+> in `/var/lib/libvirt/images`, for instance). That means they come along with
+> **all three** options — even with "System (root) only". Without this line you
+> would drag them in without noticing.
+
+> ⚠️ **What NEVER comes along — whatever you pick:** data on **other drives**.
+> Anything mounted under `/media` or `/mnt` (external disks, USB sticks, network
+> shares, cloud folders) stays out. That is deliberate — otherwise every
+> attached disk would bloat the clone.
+> **Watch out, common confusion:** If your virtual machine sits on a **second
+> drive**, it is **not** in the clone — even with the box ticked. The settings of
+> your VM program *are* cloned, though. So inside the clone your VM program
+> starts up and **still lists the machine, but its disk file is missing.**
+
 **Advanced:** Under **"⚙️ Advanced: leave out individual folders"** you can
 additionally decide exactly what stays out (checked = stays out) — for example
-virtual machines or Steam games. **"➕ Leave out another folder …"** adds any
+Steam games or Flatpak apps. **"➕ Leave out another folder …"** adds any
 folder you like.
 
 ### Then: build the snapshot

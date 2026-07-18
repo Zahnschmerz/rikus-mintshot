@@ -33,7 +33,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "6.7"
+VERSION = "6.8"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/rikus-mintshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -113,6 +113,7 @@ T_ALLE = {
                      "sicher verwahren und nicht an Fremde weitergeben."),
   'groesse_offen': "wird gemessen …",
   'anzeige_vms': "Virtuelle Maschinen (VMs)",
+  'vm_mitnehmen': "Virtuelle Maschinen mitnehmen — sie sind oft sehr groß (schnell 60 GB und mehr)",
   'anzeige_steam': "Steam-Spiele",
   'anzeige_flatpak': "Flatpak-Programme (systemweit)",
   'zusatz_knopf': "➕ Weiteren Ordner weglassen …",
@@ -215,6 +216,7 @@ T_ALLE = {
                      "keep it in a safe place and never hand it to strangers."),
   'groesse_offen': "measuring …",
   'anzeige_vms': "Virtual machines (VMs)",
+  'vm_mitnehmen': "Include virtual machines — they are often very large (60 GB and more)",
   'anzeige_steam': "Steam games",
   'anzeige_flatpak': "Flatpak apps (system-wide)",
   'zusatz_knopf': "➕ Leave out another folder …",
@@ -373,6 +375,36 @@ def root_praefix():
         return 'sudo -n'
     return 'pkexec'
 
+def vm_ordner():
+    """Wo liegen virtuelle Maschinen? Sie sind fast immer der groesste Brocken im Klon.
+
+    ⚠️ WICHTIG — sie liegen NICHT nur im Persoenlichen Ordner: QEMU/KVM (virt-manager) legt
+    sie unter /var/lib/libvirt/images ab, also auf der SYSTEMPLATTE. Die drei Modi regeln aber
+    nur den Persoenlichen Ordner ('ohne' haengt lediglich `- /home/*` an) -> VMs wandern in
+    JEDEN Modus mit, auch in "Nur System". Am echten Geraet gemessen (18.07.2026):
+        Nur System             89,4 GB  ->  ohne VM  29,4 GB   (VM-Anteil 60,0 GB)
+        System + Einstellungen 96,0 GB  ->  ohne VM  36,0 GB   (VM-Anteil 60,0 GB)
+    Deshalb bekommen sie eine eigene, gut sichtbare Zeile statt eines Haekchens im
+    zugeklappten "Fuer Fortgeschrittene"-Bereich, das nie jemand aufmacht.
+
+    VirtualBox nennt seinen Ordner "VirtualBox VMs" (MIT Leerzeichen) — frueher wurde nur
+    "~/VMs" gesucht, weshalb VirtualBox-Nutzer nie eine Wahl hatten.
+    Gibt die tatsaechlich vorhandenen Ordner zurueck (absolute Pfade, ohne Doppelte)."""
+    home = os.path.expanduser('~')
+    kandidaten = ['/var/lib/libvirt/images',                       # QEMU/KVM + virt-manager
+                  os.path.join(home, 'VirtualBox VMs'),            # VirtualBox-Standard
+                  os.path.join(home, 'VMs'),                       # haeufiger Eigenname
+                  os.path.join(home, '.local/share/gnome-boxes/images')]   # GNOME Boxes
+    try:                                                            # eigener VirtualBox-Ordner?
+        m = re.search(r'defaultMachineFolder="([^"]*)"',
+                      open(os.path.join(home, '.config/VirtualBox/VirtualBox.xml')).read())
+        if m and m.group(1):
+            kandidaten.append(m.group(1).replace('$HOME', home))
+    except OSError:
+        pass
+    return [p for p in dict.fromkeys(kandidaten) if os.path.isdir(p)]
+
+
 def dicke_ordner():
     """Kandidaten fuer die Weglassen-Haekchen: die grossen sichtbaren Ordner des
     Nutzers (XDG-Namen beruecksichtigen Uebersetzungen wie 'Bilder') + Sonderfaelle.
@@ -393,8 +425,10 @@ def dicke_ordner():
         pfad = xdg.get(schluessel, os.path.join(home, fallback))
         if os.path.isdir(pfad) and pfad != home:
             kandidaten.append((pfad, os.path.basename(pfad.rstrip('/'))))
-    for unterordner, anzeige in (('VMs', T['anzeige_vms']),
-                                 ('.local/share/Steam', T['anzeige_steam'])):
+    # Virtuelle Maschinen stehen hier BEWUSST NICHT mehr: sie haben eine eigene, gut sichtbare
+    # Zeile direkt bei der Modus-Wahl (siehe vm_ordner()) — sie kommen in JEDEM Modus mit und
+    # sind meist der groesste Brocken. Zwei Bedienelemente fuer dieselbe Sache waeren verwirrend.
+    for unterordner, anzeige in (('.local/share/Steam', T['anzeige_steam']),):
         pfad = os.path.join(home, unterordner)
         if os.path.isdir(pfad):
             kandidaten.append((pfad, anzeige))
@@ -751,6 +785,46 @@ def system_ballast_ausschluesse():
     return aus
 
 
+def klon_bedarf_ermitteln(root, liste_pfad, zeit_limit=180):
+    """Wie viele Bytes schreibt der Bau WIRKLICH? — nicht geschaetzt, sondern gefragt.
+
+    rsync macht einen Trockenlauf (`--dry-run` kopiert NICHTS) mit GENAU der Ausschlussliste,
+    die refractasnapshot gleich darauf benutzt, und meldet die Gesamtgroesse des Dateibaums.
+    Das ist exakt die Menge, die spaeter geschrieben wird — inklusive der Sparse-Dateien, bei
+    denen `du` in die Irre fuehrt (gemessen 18.07. auf lm):
+        /antiX-Frugal   belegt 10,9 GB  ->  geschrieben 155,6 GB
+        VM (libvirt)    belegt 14,7 GB  ->  geschrieben  60,0 GB
+        /timeshift      belegt 72,9 GB  ->  geschrieben 332,6 GB
+    Selbst zusammenrechnen (belegt minus Ausschluesse) waere genau an dieser Stelle falsch.
+
+    ROOT ist Pflicht: ohne ihn verfehlt rsync die geschuetzten Ordner — gemessen 31,5 statt
+    89,4 GB bei 53x "permission denied". ZU KLEIN schaetzen ist exakt der Fehler, an dem Peter
+    Linus Bau bei 44 % starb ("0 bytes remaining" bei 411 GB frei / 303 GB Daten).
+
+    Rueckgabe: Bytes (int) — oder None, wenn es nicht klappt. Dann faellt der Aufrufer auf die
+    grobe Schaetzung zurueck: der Platz-Check ist Komfort und darf den Bau NIE blockieren.
+    """
+    if not liste_pfad or not os.path.exists(liste_pfad):
+        return None
+    # Das Ziel existiert absichtlich NICHT und wird auch nicht angelegt (--dry-run schreibt nichts).
+    # Gelesen wird nur "Total file size" = Summe ALLER Quelldateien — unabhaengig davon, was am
+    # Ziel schon liegt (das waere "Total transferred file size" und hier die falsche Zahl).
+    ziel = '/tmp/rikus-mintshot-platzprobe'
+    befehl = (f'{root} rsync -a --dry-run --stats '
+              f'--exclude-from={shlex.quote(liste_pfad)} / {shlex.quote(ziel)}')
+    try:
+        # LC_ALL=C: sonst wechselt der Tausendertrenner mit der Sprache und das Auslesen bricht.
+        e = subprocess.run(befehl, shell=True, capture_output=True, text=True,
+                           timeout=zeit_limit, env={**os.environ, 'LC_ALL': 'C'})
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        return None
+    treffer = re.search(r'Total file size:\s*([\d.,]+)\s*bytes', e.stdout)
+    if not treffer:
+        return None
+    zahl = re.sub(r'\D', '', treffer.group(1))          # Tausendertrenner entfernen
+    return int(zahl) if zahl else None
+
+
 def konfig_anlegen(weglassen=None, modus='voll', iso_ordner=None, work_ordner=None):
     """Klon-Konfiguration frisch schreiben (kein Root noetig). weglassen = Liste
     absoluter Ordner-Pfade, deren INHALT draussen bleibt (Haekchen).
@@ -1003,6 +1077,24 @@ class SnapshotApp(Gtk.Window):
             gemerkt = json.load(open(WEGLASSEN_DATEI))
         except (OSError, ValueError):
             pass
+
+        # Virtuelle Maschinen: eigene, GUT SICHTBARE Zeile direkt unter der Modus-Wahl —
+        # bewusst NICHT im zugeklappten "Fuer Fortgeschrittene"-Bereich, denn dort macht sie
+        # kaum jemand auf. VMs kommen in JEDEM Modus mit (sie liegen unter /var, nicht im
+        # Persoenlichen Ordner) und sind meist der groesste Brocken: bei Gilbert 60 von 96 GB.
+        # ⚠️ UMGEKEHRTE LOGIK zu den Haekchen weiter unten: dort bedeutet "angehakt" WEGLASSEN.
+        # Hier ist die Frage positiv gestellt ("mitnehmen?") -> angehakt = MITNEHMEN.
+        # Voreinstellung "mitnehmen", damit nichts heimlich verschwindet (1:1-Versprechen) —
+        # genau diese Ueberraschung hatte Peter Linu ("Win10 fehlt in meinen VirtualBoxen").
+        # Die Wahl wird ueber WEGLASSEN_DATEI mitgespeichert: einmal setzen genuegt.
+        self.vm_pfade = vm_ordner()
+        self.cb_vms = None
+        if self.vm_pfade:
+            self.cb_vms = Gtk.CheckButton(label=T['vm_mitnehmen'])
+            self.cb_vms.set_active(not any(p in gemerkt for p in self.vm_pfade))
+            self.cb_vms.set_tooltip_text('\n'.join(self.vm_pfade))
+            box_wahl.pack_start(self.cb_vms, False, False, 4)
+
         self.haekchen = {}      # pfad -> CheckButton
         self._anzeigen = {}     # pfad -> Anzeigename
         self.gitter = Gtk.FlowBox()
@@ -1364,48 +1456,18 @@ class SnapshotApp(Gtk.Window):
         self.root = root_praefix()   # JETZT bestimmen: ein sudo-Zeitstempel vom Start kann abgelaufen sein
         os.makedirs(self.iso_ordner, exist_ok=True)
 
-        # Platz-Warnung VOR dem Bau: laeuft die Platte MITTEN im Bau voll, bricht refractasnapshot
-        # ab und hinterlaesst eine unvollstaendige ISO + eine LEERE Pruefsummen-Datei -> spaeter
-        # meldet "Stick kontrollieren" faelschlich einen Fehler. Lieber vorher ehrlich warnen.
-        if not self.selbsttest:
-            try:
-                st_z = os.statvfs(self.iso_ordner if os.path.isdir(self.iso_ordner) else '/')
-                frei = st_z.f_bavail * st_z.f_frsize
-                st_s = os.statvfs('/')
-                belegt = (st_s.f_blocks - st_s.f_bfree) * st_s.f_frsize
-                # Faustregel: ein Klon braucht grob so viel wie das System belegt. Bei "Nur System"
-                # oder abgewaehlten Ordnern weniger -> deshalb nur WARNEN, nicht blockieren.
-                if frei < belegt:
-                    de = SPRACHE == 'de'
-                    dlg = Gtk.MessageDialog(
-                        transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
-                        buttons=Gtk.ButtonsType.OK_CANCEL,
-                        text=("Es könnte zu wenig Speicherplatz sein" if de
-                              else "There may be too little disk space"))
-                    dlg.format_secondary_text(
-                        (f"Freier Platz am Ablageort: {groesse_lesbar(frei)}\n"
-                         f"Dein System belegt etwa:   {groesse_lesbar(belegt)}\n\n"
-                         "Ein Klon braucht ungefähr so viel Platz wie dein System belegt. Läuft\n"
-                         "der Platz während des Baus aus, bricht er ab — die ISO wird dann\n"
-                         "unbrauchbar.\n\n"
-                         "Tipp: große Ordner abwählen, einen schlankeren Modus wählen, oder den\n"
-                         "Ablageort auf eine Platte mit mehr Platz legen (Knopf „Ablageort“).\n\n"
-                         "Trotzdem fortfahren?") if de else
-                        (f"Free space at destination: {groesse_lesbar(frei)}\n"
-                         f"Your system uses roughly:  {groesse_lesbar(belegt)}\n\n"
-                         "A clone needs roughly as much space as your system uses. If space\n"
-                         "runs out during the build, it aborts — the ISO becomes unusable.\n\n"
-                         "Tip: deselect large folders, pick a leaner mode, or put the destination\n"
-                         "on a drive with more room (“Location” button).\n\n"
-                         "Continue anyway?"))
-                    antwort = dlg.run()
-                    dlg.destroy()
-                    if antwort != Gtk.ResponseType.OK:
-                        return
-            except Exception:
-                pass   # Platz-Check ist reiner Komfort — nie den Bau daran scheitern lassen
+        # Die Platz-Warnung stand frueher GENAU HIER — und damit zu frueh: die Ausschlussliste
+        # (klon.list) entsteht erst weiter unten in konfig_anlegen(). Ohne sie liess sich der Bedarf
+        # nur grob raten ("so viel wie das System belegt"), und dieses Raten lag in beide Richtungen
+        # daneben: bei Peter Linu zu klein (durchgewunken -> Abbruch bei 44 %), auf Gilberts eigenem
+        # Rechner viel zu gross (181 GB angenommen, echter Klon 29 GB -> Fehlalarm bei jedem Bau).
+        # Sie sitzt jetzt direkt HINTER konfig_anlegen() und fragt rsync nach der echten Menge.
 
         weglassen = [pfad for pfad, cb in self.haekchen.items() if cb.get_active()]
+        # VM-Zeile: Haken WEG = virtuelle Maschinen draussen lassen (umgekehrte Logik, s. o.).
+        # Wandert mit in WEGLASSEN_DATEI -> die Wahl bleibt beim naechsten Bau erhalten.
+        if getattr(self, 'cb_vms', None) is not None and not self.cb_vms.get_active():
+            weglassen += [p for p in self.vm_pfade if p not in weglassen]
         try:
             os.makedirs(KONFIG_ORDNER, exist_ok=True)
             with open(WEGLASSEN_DATEI, 'w') as f:
@@ -1423,6 +1485,71 @@ class SnapshotApp(Gtk.Window):
                 self.melde(Gtk.MessageType.ERROR, T['konfig_fehlt'],
                            '/etc/refractasnapshot.conf')
                 return
+
+            # ---- Platz-Warnung MIT DER ECHTEN MENGE (die Ausschlussliste steht jetzt) ----
+            # Gebraucht wird das DOPPELTE: der Bau legt erst eine Kopie des Systems ab (myfs) und
+            # packt sie danach DANEBEN noch einmal zusammen (squashfs) — beides liegt gleichzeitig
+            # auf der Platte. Bei kaum komprimierbaren Daten (Fotos, Videos, VM-Platten) ist das
+            # gepackte Abbild fast so gross wie die Kopie. Nur WARNEN, nie blockieren.
+            try:
+                st_z = os.statvfs(self.iso_ordner if os.path.isdir(self.iso_ordner) else '/')
+                frei = st_z.f_bavail * st_z.f_frsize
+                self.setze_phase('Platzbedarf wird ermittelt ...' if SPRACHE == 'de'
+                                 else 'Checking disk space ...')
+                while Gtk.events_pending():     # Anzeige auffrischen, bevor rsync kurz blockiert
+                    Gtk.main_iteration()
+                menge = klon_bedarf_ermitteln(self.root, os.path.join(KONFIG_ORDNER, 'klon.list'))
+                genau = menge is not None
+                if not genau:
+                    # Rueckfall, falls rsync nicht antwortet: grob wie frueher (alles auf der
+                    # Systemplatte). Ungenau, aber eine grobe Warnung ist besser als gar keine.
+                    st_s = os.statvfs('/')
+                    menge = (st_s.f_blocks - st_s.f_bfree) * st_s.f_frsize
+                brauch = menge * 2
+                if frei < brauch:
+                    de = SPRACHE == 'de'
+                    unsicher = ('' if genau else
+                                ("\n(Grobe Schätzung — die genaue Messung war nicht möglich.)\n"
+                                 if de else
+                                 "\n(Rough estimate — the exact measurement was not possible.)\n"))
+                    dlg = Gtk.MessageDialog(
+                        transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
+                        buttons=Gtk.ButtonsType.OK_CANCEL,
+                        text=("Es könnte zu wenig Speicherplatz sein" if de
+                              else "There may be too little disk space"))
+                    dlg.format_secondary_text(
+                        (f"Ablageort: {self.iso_ordner}\n"
+                         f"Dort frei:            {groesse_lesbar(frei)}\n"
+                         f"Dein Klon wird ca.:   {groesse_lesbar(menge)}\n"
+                         f"Gebraucht beim Bau:   {groesse_lesbar(brauch)}\n"
+                         f"{unsicher}\n"
+                         "Der Bau legt zuerst eine Kopie deines Systems ab und packt sie danach\n"
+                         "DANEBEN noch einmal zusammen. Beides liegt gleichzeitig auf der Platte —\n"
+                         "deshalb braucht der Bau kurzzeitig etwa das DOPPELTE.\n\n"
+                         "Läuft der Platz mittendrin aus, bricht der Bau ab — die ISO wird dann\n"
+                         "unbrauchbar.\n\n"
+                         "Tipp: große Ordner abwählen, einen schlankeren Modus wählen, oder den\n"
+                         "Ablageort auf eine Platte mit mehr Platz legen (Knopf „Ablageort“).\n\n"
+                         "Trotzdem fortfahren?") if de else
+                        (f"Destination: {self.iso_ordner}\n"
+                         f"Free there:         {groesse_lesbar(frei)}\n"
+                         f"Your clone will be: {groesse_lesbar(menge)}\n"
+                         f"Needed to build:    {groesse_lesbar(brauch)}\n"
+                         f"{unsicher}\n"
+                         "The build first copies your system, then packs a compressed image\n"
+                         "NEXT TO that copy. Both sit on the disk at the same time — so the\n"
+                         "build briefly needs about TWICE that size.\n\n"
+                         "If space runs out mid-build, it aborts — the ISO becomes unusable.\n\n"
+                         "Tip: deselect large folders, pick a leaner mode, or put the destination\n"
+                         "on a drive with more room (“Location” button).\n\n"
+                         "Continue anyway?"))
+                    antwort = dlg.run()
+                    dlg.destroy()
+                    if antwort != Gtk.ResponseType.OK:
+                        return
+            except Exception:
+                pass   # Platz-Check ist reiner Komfort — nie den Bau daran scheitern lassen
+
         conf = os.path.join(KONFIG_ORDNER, 'klon.conf')
 
         kern = os.uname().release

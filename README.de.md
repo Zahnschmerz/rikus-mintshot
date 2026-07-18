@@ -31,6 +31,8 @@ Fortgeschrittene können genau festlegen, welche Ordner weggelassen werden.
 - **Der Live-Stick startet direkt in dein eigenes Konto und deine Sprache** — kein anonymer Platzhalter-Benutzer.
 - **Bootet auch mit eingeschaltetem Secure Boot** — die ISO trägt die Microsoft-signierte shim- + Canonical-signierte GRUB-Kette, so startet sie auf modernen PCs (z. B. mit Windows-Dualboot), *ohne* Secure Boot abzuschalten. Läuft mit an oder aus.
 - **Symbol „System installieren" direkt auf dem Live-Schreibtisch** (über Calamares) übernimmt 1:1: keine Benutzer-Anlage, keine erneute Eingabe von Sprache/Zeitzone/Tastatur — alles schon deins.
+- **Ehrliche Platz-Vorschau vor dem Bau** — das Programm rechnet aus, wie groß dein Klon *wirklich* wird (statt zu raten) und warnt nur, wenn es tatsächlich eng wird. So bricht kein Bau mehr mittendrin ab.
+- **Virtuelle Maschinen mit einem Haken abwählbar** — direkt bei der Auswahl sichtbar. Sie liegen oft auf der Systemplatte und kämen sonst ungefragt mit; das sind schnell 60 GB.
 - **Deutsche / englische Oberfläche**, automatisch nach deiner Systemsprache.
 
 ## Voraussetzungen
