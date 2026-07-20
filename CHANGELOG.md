@@ -5,6 +5,30 @@ All releases of Rikus Mintshot, newest first.
 
 ---
 
+## 6.9 — 20. Juli 2026
+
+**🇩🇪 Zwei Fehler nach dem Wiederherstellen behoben — und eine fehlende Voraussetzung ergänzt.**
+
+- **Behoben: GRUB-Eingabeaufforderung nach dem Wiederherstellen.** Wer einen Klon auf einem Rechner wiederherstellte, auf dem **schon ein Linux Mint installiert war**, blieb beim Start unter Umständen bei `grub` hängen. Ursache: Nach der Installation richtet das Programm die Startreihenfolge der Firmware, damit nicht weiter Windows startet. Dabei suchte es den Eintrag, der zur eigenen Startpartition gehört — und nahm blind **den ersten**, den es fand. Auf einem Rechner mit Vorgeschichte gibt es aber **zwei** Einträge mit derselben Kennung: den alten und den neuen. Erwischte es den alten, toten, schob es genau den nach vorn.
+  Jetzt wird der richtige ausgewählt: bevorzugt der Eintrag, **mit dem der Rechner gerade gestartet ist** (besser lässt sich nicht beweisen, dass er funktioniert), sonst der, dessen **Startdatei wirklich vorhanden ist**. Bleibt es unklar, wird **nichts** verändert und alles ins Protokoll geschrieben. Gelöscht wird weiterhin kein Eintrag.
+- **Behoben: Nach dem Wiederherstellen ließ sich kein Schnappschuss mehr erstellen.** Bei einem Klon im Modus **„Nur System"** bleibt alles unterhalb von `/home` draußen — also auch der Ordner, in dem gebaut wird. Die Prüfung „bin ich fertig eingerichtet?" sah nur in die Systemordner, meldete deshalb „alles bereit" und bot die Ersteinrichtung nie an. Nur die legt diesen Ordner aber an. Da `/home` dem Verwalter gehört, durfte ihn ein normaler Benutzer auch nicht selbst anlegen — der Knopf **tat einfach nichts**, ohne jede Meldung. Auch eine Neuinstallation half nicht, denn das Paket legt den Ordner ebenfalls nicht an.
+  Jetzt gehört der Ordner zur Einrichtungs-Prüfung, und beim Bauen wird er notfalls **mit Verwalter-Rechten angelegt und dem Benutzer übergeben**. Geht auch das nicht, erscheint eine **verständliche Meldung** statt eines toten Knopfes.
+- **Ergänzt: `wget` gehört jetzt zu den Voraussetzungen.** Die Ersteinrichtung lädt damit den Motor `refractasnapshot` herunter, aber keine der bisherigen Voraussetzungen brachte es mit. Auf Linux Mint ist es ab Werk vorhanden, weshalb es hier nie auffiel — auf einem schlanken Debian brach die Ersteinrichtung ab, bevor sie begann.
+
+*Mit Dank an Hans-Josef Rausch, der Version 6.7 vollständig durchgetestet und beide Fehler gemeldet hat.*
+
+**🇬🇧 Two bugs after restoring a clone fixed — and a missing requirement added.**
+
+- **Fixed: GRUB prompt after restoring.** Restoring a clone onto a machine that **already had Linux Mint installed** could leave the computer sitting at a `grub` prompt. Cause: after installation the program puts its own firmware entry first, so the machine does not keep booting Windows. It looked for the entry belonging to its own boot partition — and blindly took **the first** one it found. On a machine with a history there are **two** entries with the same identifier, the old one and the new one. If it picked the old, dead one, that is what it moved to the front.
+  It now picks the right one: preferably the entry **the machine just booted from** (there is no better proof that it works), otherwise the one whose **boot file actually exists**. If it stays ambiguous, **nothing** is changed and everything is written to the log. No entry is ever deleted.
+- **Fixed: no new snapshot could be created after restoring.** A clone made in **"System (root) only"** mode leaves out everything below `/home` — including the folder the build works in. The "am I set up?" check only looked at system folders, reported "all good", and therefore never offered the first-time setup — which is the only thing that creates that folder. Since `/home` belongs to the administrator, a normal user could not create it either, so the button **simply did nothing**, without any message. Reinstalling did not help, because the package does not create that folder either.
+  The folder is now part of the setup check, and during a build it is created **with administrator rights and handed to the user** if needed. If even that fails, a **clear message** appears instead of a dead button.
+- **Added: `wget` is now a requirement.** The first-time setup uses it to download the `refractasnapshot` engine, but none of the previous requirements pulled it in. Linux Mint ships it by default, which is why it never showed up here — on a slim Debian the setup aborted before it started.
+
+*With thanks to Hans-Josef Rausch, who tested version 6.7 in full and reported both bugs.*
+
+---
+
 ## 6.8 — 18. Juli 2026
 
 **🇩🇪 Die Platzprüfung sagt jetzt die Wahrheit, und virtuelle Maschinen lassen sich weglassen.**

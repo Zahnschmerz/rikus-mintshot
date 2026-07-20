@@ -80,8 +80,51 @@ PARTUUID=$(blkid -o value -s PARTUUID "$ESP" 2>/dev/null)
 # Welcher Boot-Eintrag zeigt auf GENAU DIESE Partition?
 # efibootmgr -v zeigt z.B.:
 #   Boot000E* ubuntu HD(1,GPT,50a8a3a7-8153-4627-a1ce-54fdf6163543,0x1000,0x100000)/File(\EFI\UBUNTU\SHIMX64.EFI)
-NUM=$(efibootmgr -v 2>/dev/null | grep -iF "$PARTUUID" | grep -oiE '^Boot[0-9A-Fa-f]{4}' | head -1 | cut -c5-8)
-[ -n "$NUM" ] || { sag "kein eigener Boot-Eintrag fuer $ESP gefunden - uebersprungen."; exit 0; }
+#
+# ⚠️ ES KOENNEN MEHRERE SEIN — und frueher nahm hier ein `head -1` blind den ersten.
+# Gemeldet von Hans-Josef Rausch (19.07.2026): Er stellte einen Klon auf einem Rechner wieder her,
+# auf dem SCHON ein Mint installiert war. Dessen alter Firmware-Eintrag blieb stehen -> zwei
+# Eintraege mit DERSELBEN PARTUUID. Das `head -1` erwischte den alten, toten und schob ihn nach
+# vorn -> der Rechner landete beim Start in der GRUB-Eingabeaufforderung. Erst als er den alten
+# Eintrag von Hand loeschte, lief es wieder. Deshalb wird jetzt der RICHTIGE ausgewaehlt.
+TREFFER=$(efibootmgr -v 2>/dev/null | grep -iF "$PARTUUID" | grep -oiE '^Boot[0-9A-Fa-f]{4}' | cut -c5-8)
+ANZAHL=$(printf '%s\n' "$TREFFER" | grep -c . || true)
+
+if [ "${ANZAHL:-0}" -eq 0 ]; then
+    sag "kein eigener Boot-Eintrag fuer $ESP gefunden - uebersprungen."; exit 0
+elif [ "$ANZAHL" -eq 1 ]; then
+    NUM=$(printf '%s' "$TREFFER")
+else
+    sag "ACHTUNG: $ANZAHL Eintraege zeigen auf $ESP ($(printf '%s' "$TREFFER" | tr '\n' ' '))- vermutlich ein Rest einer frueheren Installation."
+    # 1. Wahl: der Eintrag, mit dem dieser Rechner GERADE gestartet ist. Besser kann man nicht
+    #    beweisen, dass er funktioniert.
+    CUR=$(efibootmgr 2>/dev/null | sed -n 's/^BootCurrent: //p' | head -1)
+    if [ -n "$CUR" ] && printf '%s\n' "$TREFFER" | grep -qix "$CUR"; then
+        NUM="$CUR"
+        sag "  -> BootCurrent $CUR gehoert dazu: damit ist das System gerade gestartet, den nehmen wir."
+    else
+        # 2. Wahl: der, dessen Startdatei auf der ESP WIRKLICH existiert. Ein Rest einer alten
+        #    Installation zeigt ins Leere - genau das erzeugt die GRUB-Eingabeaufforderung.
+        LEBEND=""; ANZ_LEBEND=0
+        for n in $TREFFER; do
+            DATEI=$(efibootmgr -v 2>/dev/null | grep -iE "^Boot$n" | grep -oiE 'File\(\\[^)]*\)' | head -1 \
+                    | sed -e 's/^[Ff]ile(\\//' -e 's/)$//' -e 's|\\|/|g')
+            if [ -n "$DATEI" ] && [ -e "/boot/efi/$DATEI" ]; then
+                sag "  Boot$n -> /boot/efi/$DATEI (vorhanden)"
+                LEBEND="$n"; ANZ_LEBEND=$((ANZ_LEBEND + 1))
+            else
+                sag "  Boot$n -> ${DATEI:-(kein Pfad)} (FEHLT - toter Rest)"
+            fi
+        done
+        if [ "$ANZ_LEBEND" -eq 1 ]; then
+            NUM="$LEBEND"
+            sag "  -> genau einer zeigt auf eine vorhandene Startdatei: $NUM"
+        else
+            sag "  -> nicht eindeutig ($ANZ_LEBEND brauchbar). NICHTS geaendert - lieber nichts tun als das Falsche."
+            exit 0
+        fi
+    fi
+fi
 
 ALT=$(efibootmgr 2>/dev/null | sed -n 's/^BootOrder: //p' | head -1)
 [ -n "$ALT" ] || { sag "BootOrder nicht lesbar - uebersprungen."; exit 0; }

@@ -258,6 +258,12 @@ ist trotzdem sofort brauchbar — alles ist eingerichtet wie gewohnt.
 „Nur System" ist am kleinsten, „System + Home" am größten. Über die Häkchen
 unter „Für Fortgeschrittene" lässt sich zusätzlich sparen.
 
+**Ich habe einen Klon installiert — und jetzt will das Programm neu eingerichtet
+werden?**  Das ist richtig so und dauert nur einen Klick. Bei einem Klon im Modus
+**„Nur System (root)"** bleibt alles unterhalb von `/home` draußen — auch der
+Ordner, in dem das Programm seine Abbilder ablegt. Er wird dann neu angelegt.
+Einfach auf **„🔧 Jetzt einrichten"** klicken.
+
 **Der Stick startet nicht?**  Boot-Menü-Taste falsch (F12/F2/F8/Esc probieren),
 oder Stick neu schreiben und kontrollieren (Punkt 5). (Secure Boot muss NICHT
 ausgeschaltet werden — die ISO ist signiert.)

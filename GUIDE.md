@@ -245,6 +245,11 @@ The live desktop shows the icon **"Install System"**:
 **"System + my settings"**. It's preselected, stays lean and is still ready to
 use — everything set up the way you know it.
 
+**I installed a clone — and now the program wants to be set up again?**  That is
+correct and takes one click. A clone made in **"System (root) only"** mode leaves
+out everything below `/home` — including the folder where the program keeps its
+images. It is simply recreated. Just click **"🔧 Set up now"**.
+
 **How big is the ISO?**  That mainly depends on your choice: "System only" is
 smallest, "System + Home" largest. The checkboxes under "Advanced" can save
 additional space.

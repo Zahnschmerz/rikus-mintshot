@@ -33,7 +33,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "6.8"
+VERSION = "6.9"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/rikus-mintshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -449,7 +449,14 @@ BAU_PAKETE = ('calamares live-boot live-config-systemd live-boot-initramfs-tools
               # Firmware-Eintrag nach vorn, sonst startet der Rechner weiter Windows. Es MUSS im
               # Klon liegen (dort laeuft rikus-mintshot-bootorder). Auf den meisten Mint-Systemen
               # ist es zufaellig schon da -> auf dem eigenen PC faellt ein Fehlen NIE auf.
-              'efibootmgr')
+              'efibootmgr '
+              # wget: holt in der Ersteinrichtung den Motor refractasnapshot von SourceForge
+              # (siehe einricht_skript: `wget -q -O "$T/refractasnapshot-base.deb" ...`).
+              # Stand 19.07.2026 gemessen: KEINES der uebrigen Pakete zieht wget nach. Auf Mint ist
+              # es ab Werk da -> auf dem eigenen PC faellt das Fehlen NIE auf; auf einem schlanken
+              # Debian bricht die Ersteinrichtung ab, bevor sie ueberhaupt anfaengt. Dieselbe Falle
+              # wie bei efibootmgr am 17.07. -> deshalb hier UND in den Depends der .deb.
+              'wget')
 
 # ---- Secure-Boot-Bausteine (fertig signiert von Microsoft/Canonical) ----
 # Microsoft-signierter shim (Erststarter), Canonical-signierter GRUB, MokManager.
@@ -531,6 +538,21 @@ def fehlende_teile():
     if _system_app_version() != VERSION:
         fehlt.append('App im System (/opt) — Teil jedes Schnappschusses' if SPRACHE == 'de'
                      else 'app inside the system (/opt) — part of every snapshot')
+    # Der Ablageordner — die Stelle, an der ueberhaupt gebaut wird.
+    # WARUM DAS HIER GEPRUEFT WERDEN MUSS (Hans-Josef Rausch, 19.07.2026):
+    # Alles andere in dieser Liste liegt in /usr oder /etc und ist damit in JEDEM Klon enthalten.
+    # Der Ablageordner liegt aber standardmaessig unter /home — und der Modus "Nur System" haengt
+    # `- /home/*` an die Ausschlussliste. Nach dem Wiederherstellen eines solchen Klons fehlt er
+    # also, waehrend hier alles gruen meldete -> die Ersteinrichtung (die ihn per mkdir+chown
+    # anlegt) lief nie -> beim Bauen Zugriff verweigert, der Knopf tat sichtbar nichts.
+    # Dieselbe Luecke wie beim Save-Dienst am 16.07.: geprueft wurde nicht, was wirklich noetig ist.
+    try:
+        _iso_ordner, _ = ablage_ordner()
+        if not (os.path.isdir(_iso_ordner) and os.access(_iso_ordner, os.W_OK)):
+            fehlt.append(f'Ablageordner {_iso_ordner} (fehlt oder nicht beschreibbar)' if SPRACHE == 'de'
+                         else f'destination folder {_iso_ordner} (missing or not writable)')
+    except Exception:
+        pass          # Die Pruefung ist Komfort und darf die Liste nie zum Absturz bringen.
     return fehlt
 
 def einricht_skript():
@@ -1450,11 +1472,66 @@ class SnapshotApp(Gtk.Window):
 
     # ================= ISO bauen =================
 
+    def _ablage_bereitstellen(self):
+        """Ablageordner anlegen und beschreibbar machen. Rueckgabe: True = der Bau kann starten.
+
+        WARUM ES DIESE METHODE GIBT (Hans-Josef Rausch, 19.07.2026):
+        Hier stand frueher ein nacktes `os.makedirs(self.iso_ordner, exist_ok=True)`. Nach dem
+        WIEDERHERSTELLEN eines Klons, der im Modus "Nur System" gebaut wurde, geht das schief:
+          * "Nur System" haengt `- /home/*` an die Ausschlussliste -> /home/snapshot ist NICHT im Klon
+          * `fehlende_teile()` prueft nur /usr und /etc -> meldet "eingerichtet" -> die
+            Ersteinrichtung laeuft nie, und NUR sie legt den Ordner an (mkdir + chown)
+          * /home gehoert root (drwxr-xr-x) -> ein normaler Benutzer darf dort nichts anlegen
+        Ergebnis: PermissionError, ungebremst aus dem Klick-Handler -> fuer den Nutzer tat der
+        Knopf einfach NICHTS. Seine Meldung: "Mintshot konnte zwar gestartet werden, aber kein
+        neuer Schnappschuss erstellt werden" - auch nach Neuinstallation nicht, denn das .deb
+        legt diesen Ordner ebenfalls nicht an (im postinst kommt er nicht vor).
+
+        Reihenfolge: selbst versuchen -> mit Verwalter-Rechten nachhelfen (die haben wir an
+        dieser Stelle ohnehin schon) -> sonst ehrlich melden statt stillem Nichts.
+        """
+        try:
+            os.makedirs(self.iso_ordner, exist_ok=True)
+        except OSError:
+            pass                      # kein Abbruch: gleich kommt der Versuch mit Root
+        if not (os.path.isdir(self.iso_ordner) and os.access(self.iso_ordner, os.W_OK)):
+            # Genau das, was sonst die Ersteinrichtung tut - nur eben jetzt.
+            ziel = shlex.quote(self.iso_ordner)
+            try:
+                subprocess.run(f'{self.root} mkdir -p {ziel} && '
+                               f'{self.root} chown {shlex.quote(getpass.getuser())} {ziel}',
+                               shell=True, capture_output=True, timeout=60)
+            except (OSError, subprocess.TimeoutExpired, ValueError):
+                pass
+        if os.path.isdir(self.iso_ordner) and os.access(self.iso_ordner, os.W_OK):
+            return True
+        de = SPRACHE == 'de'
+        self.melde(Gtk.MessageType.ERROR,
+                   'Ablageort lässt sich nicht anlegen' if de else 'Cannot create the destination folder',
+                   (f"{self.iso_ordner}\n\n"
+                    "Dieser Ordner fehlt und ließ sich auch nicht anlegen.\n\n"
+                    "Das passiert vor allem nach dem Wiederherstellen eines Klons, der im Modus\n"
+                    "„Nur System“ gebaut wurde: Dabei bleibt alles unterhalb von /home draußen —\n"
+                    "auch dieser Ordner. Und /home gehört dem Verwalter, deshalb darf ein\n"
+                    "normaler Benutzer dort nichts anlegen.\n\n"
+                    "Abhilfe: Knopf „📁 Ablageort ändern“ und einen Ordner wählen, in dem du\n"
+                    "schreiben darfst (zum Beispiel in deinem Persönlichen Ordner)." ) if de else
+                   (f"{self.iso_ordner}\n\n"
+                    "This folder is missing and could not be created.\n\n"
+                    "This mainly happens after restoring a clone built in \"System (root) only\"\n"
+                    "mode: everything below /home is left out then — including this folder. And\n"
+                    "/home belongs to the administrator, so a normal user cannot create anything\n"
+                    "there.\n\n"
+                    "Fix: use the „📁 Location“ button and pick a folder you can write to (your\n"
+                    "home folder, for instance)."))
+        return False
+
     def bauen_geklickt(self, _knopf):
         if self.lauf_aktiv:
             return
         self.root = root_praefix()   # JETZT bestimmen: ein sudo-Zeitstempel vom Start kann abgelaufen sein
-        os.makedirs(self.iso_ordner, exist_ok=True)
+        if not self._ablage_bereitstellen():
+            return
 
         # Die Platz-Warnung stand frueher GENAU HIER — und damit zu frueh: die Ausschlussliste
         # (klon.list) entsteht erst weiter unten in konfig_anlegen(). Ohne sie liess sich der Bedarf
