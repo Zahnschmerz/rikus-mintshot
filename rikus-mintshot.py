@@ -807,7 +807,43 @@ def system_ballast_ausschluesse():
     return aus
 
 
-def klon_bedarf_ermitteln(root, liste_pfad, zeit_limit=180):
+def bau_eigene_ausschluesse(conf_pfad):
+    """Die drei Ordner, die refractasnapshot ZUSAETZLICH zur Liste auslaesst.
+
+    In refractasnapshot (Zeile 750) steht:
+        --exclude="$work_dir" --exclude="$snapshot_dir" --exclude="$efi_work"
+                                                        --exclude-from="$snapshot_excludes"
+    Diese drei stehen also NICHT in klon.list, werden aber trotzdem nicht kopiert.
+    Wer sie beim Messen mitzaehlt, bekommt einen Fehlalarm — gemessen 20.07.2026 auf lm:
+    102,7 GB gemeldet statt der echten ~40 GB, weil der ISO-Ordner /home/snapshot mit
+    63 GB fertiger Abbilder mitgezaehlt wurde. Der Klon davor war 15,6 GB gross.
+
+    Die Werte kommen aus DERSELBEN Konfigurationsdatei, die der Bau gleich darauf liest —
+    so koennen Messung und Bau nicht auseinanderlaufen, auch wenn der Ablageort wechselt.
+    """
+    ordner = []
+    try:
+        with open(conf_pfad) as f:
+            inhalt = f.read()
+    except OSError:
+        return ordner
+    werte = {}
+    for schluessel in ('work_dir', 'snapshot_dir', 'efi_work'):
+        m = re.search(r'^\s*' + schluessel + r'\s*=\s*"?([^"\n]+)"?\s*$', inhalt, re.M)
+        if m:
+            werte[schluessel] = m.group(1).strip()
+    # efi_work steht als "${work_dir}/efi-files" oder schon aufgeloest -> beides abfangen
+    for schluessel, pfad in werte.items():
+        for platzhalter, ersatz in (('${work_dir}', werte.get('work_dir', '')),
+                                    ('$work_dir', werte.get('work_dir', ''))):
+            if ersatz:
+                pfad = pfad.replace(platzhalter, ersatz)
+        if pfad.startswith('/'):
+            ordner.append(pfad.rstrip('/'))
+    return ordner
+
+
+def klon_bedarf_ermitteln(root, liste_pfad, zeit_limit=180, conf_pfad=None):
     """Wie viele Bytes schreibt der Bau WIRKLICH? — nicht geschaetzt, sondern gefragt.
 
     rsync macht einen Trockenlauf (`--dry-run` kopiert NICHTS) mit GENAU der Ausschlussliste,
@@ -832,7 +868,13 @@ def klon_bedarf_ermitteln(root, liste_pfad, zeit_limit=180):
     # Gelesen wird nur "Total file size" = Summe ALLER Quelldateien — unabhaengig davon, was am
     # Ziel schon liegt (das waere "Total transferred file size" und hier die falsche Zahl).
     ziel = '/tmp/rikus-mintshot-platzprobe'
-    befehl = (f'{root} rsync -a --dry-run --stats '
+    # Die drei bau-eigenen Ausschluesse MUESSEN mit — sonst zaehlt die Messung den ISO- und
+    # den Arbeitsordner mit, die der Bau nie anfasst (Fehlalarm, 20.07.2026 auf lm).
+    if conf_pfad is None:
+        conf_pfad = os.path.join(KONFIG_ORDNER, 'klon.conf')
+    extra = ''.join(f'--exclude={shlex.quote(p)} '
+                    for p in bau_eigene_ausschluesse(conf_pfad))
+    befehl = (f'{root} rsync -a --dry-run --stats {extra}'
               f'--exclude-from={shlex.quote(liste_pfad)} / {shlex.quote(ziel)}')
     try:
         # LC_ALL=C: sonst wechselt der Tausendertrenner mit der Sprache und das Auslesen bricht.
@@ -1646,6 +1688,12 @@ class SnapshotApp(Gtk.Window):
             grub_v, live_v = boot_vorlagen_fuellen()
             # EIN Root-Aufruf: Vorlagen einspielen + Motor starten (+ Secure-Boot-Nachbau)
             innen = (
+                # Sicherheitsnetz fuers WLAN: eine Kopie der gespeicherten Verbindungen
+                # wandert ins Abbild. Findet NetworkManager sie beim Start des Klons nicht
+                # (die netplan-Erzeugung ist die einzige Quelle und kann ausfallen), holt
+                # der Autostart-Dienst sie von dort zurueck. Nie den Bau daran scheitern
+                # lassen -> "|| true".
+                f'{{ /usr/local/sbin/rikus-mintshot-netzfix --sichern || true ; }} && '
                 f'cp "{grub_v}" /usr/lib/refractasnapshot/grub.cfg.template && '
                 f'cp "{live_v}" /usr/lib/refractasnapshot/iso/isolinux/live.cfg && '
                 # Die Start-Datei (initrd) MUSS den Live-Start (live-boot) enthalten, sonst

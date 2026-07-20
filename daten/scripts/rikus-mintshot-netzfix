@@ -14,7 +14,58 @@
 # Verbindungs-NAMEN (z.B. "NM-8fb7...") zum Interface-Namen -> existiert nicht ->
 # Verbindung tot. (Genau dieser Fehler trat in der ersten Fassung auf.)
 # Ebenso wird eine »macaddress:«-Bindung entfernt (haengt an der konkreten Karte).
-import glob, re, sys
+import glob, re, sys, os, shutil, subprocess
+
+# ---------------------------------------------------------------------------
+# SICHERHEITSNETZ (20.07.2026) — zweiter Weg fuer die WLAN-Zugangsdaten.
+#
+# Das Problem: Die gespeicherten Verbindungen liegen im Klon NUR in
+# /etc/netplan/*.yaml. Daraus baut ein Hilfsprogramm beim Start die Dateien in
+# /run/NetworkManager/system-connections/. Geht dabei irgendetwas schief, kennt
+# NetworkManager die Verbindung nicht — die Karte laeuft, findet alle Netze,
+# aber das eigene WLAN ist "vergessen". Genau dieses Bild trat am 20.07. auf
+# einem Klon auf, obwohl die netplan-Datei nachweislich fehlerfrei im Abbild lag.
+#
+# Die Loesung: beim BAU eine Kopie der Verbindungen ins Abbild legen (--sichern),
+# beim START pruefen, ob NetworkManager sie kennt — und nur die FEHLENDEN direkt
+# als NetworkManager-Datei zurueckschreiben. Im Normalfall passiert nichts.
+SICHERUNG = '/usr/local/share/rikus-mintshot/netz-sicherung'
+
+
+def _portabel(text):
+    """Bindung an die konkrete Karte der Quelle loesen (wie beim netplan-Fix)."""
+    typ = re.search(r'^type=(\S+)', text, re.M)
+    platzhalter = 'wl*' if (typ and typ.group(1) == 'wifi') else 'e*'
+    text = re.sub(r'^interface-name=.*$', 'interface-name=' + platzhalter + ';',
+                  text, flags=re.M)
+    return re.sub(r'^mac-address=.*\n?', '', text, flags=re.M)
+
+
+if '--sichern' in sys.argv:
+    # Laeuft als root beim Bau, BEVOR der Klon gezogen wird. Nur Kopieren, sonst nichts.
+    os.makedirs(SICHERUNG, exist_ok=True)
+    for alt in glob.glob(os.path.join(SICHERUNG, '*.nmconnection')):
+        os.remove(alt)                       # alte Sicherung nie mitschleppen
+    anzahl = 0
+    for quelle in ('/run/NetworkManager/system-connections',
+                   '/etc/NetworkManager/system-connections'):
+        for f in glob.glob(os.path.join(quelle, '*.nmconnection')):
+            try:
+                inhalt = open(f).read()
+            except OSError:
+                continue
+            # nur echte WLAN-/Kabel-Verbindungen; lo, Bruecken und VM-Adapter (vnet*)
+            # erzeugt NetworkManager selbst neu — die gehoeren nicht ins Abbild.
+            if not re.search(r'^type=(wifi|802-11-wireless|ethernet|802-3-ethernet)$',
+                             inhalt, re.M):
+                continue
+            ziel = os.path.join(SICHERUNG, os.path.basename(f))
+            shutil.copyfile(f, ziel)
+            os.chmod(ziel, 0o600)
+            anzahl += 1
+    print(f"netzfix: {anzahl} Netz-Verbindung(en) fuer den Klon gesichert -> {SICHERUNG}")
+    sys.exit(0)
+
 geaendert = 0
 for f in glob.glob('/etc/netplan/*.yaml'):
     try:
@@ -58,6 +109,47 @@ print(f"netzfix: {geaendert} netplan-Datei(en) auf Interface-Platzhalter (wl*/e*
 # passiert das automatisch, nicht erst nach einer Installation. Steht schon "wl*" drin (jeder
 # weitere Boot), wird nichts angewendet -> kein unnoetiger Netz-Neustart.
 if geaendert and '--apply' in sys.argv:
-    import subprocess
     print("netzfix: wende die Umstellung an (netplan apply) ...")
     subprocess.run(['netplan', 'apply'], check=False)
+
+# ---------------------------------------------------------------------------
+# SICHERHEITSNETZ, zweiter Teil: fehlende Verbindungen zurueckholen.
+# Laeuft beim Start (Dienst ruft mit --apply auf), NACH NetworkManager. Es wird nur
+# eingegriffen, wenn eine gesicherte Verbindung NICHT bekannt ist — sonst passiert
+# nichts (keine doppelten Eintraege, kein Netz-Neustart).
+if '--apply' in sys.argv and os.path.isdir(SICHERUNG):
+    try:
+        r = subprocess.run(['nmcli', '-t', '-f', 'UUID', 'connection', 'show'],
+                           capture_output=True, text=True, timeout=30)
+        bekannt = {z.strip() for z in r.stdout.split('\n') if z.strip()}
+    except Exception:
+        bekannt = None          # nmcli nicht ansprechbar -> lieber nichts anfassen
+
+    zurueck = 0
+    if bekannt is not None:
+        ZIEL = '/etc/NetworkManager/system-connections'
+        for f in sorted(glob.glob(os.path.join(SICHERUNG, '*.nmconnection'))):
+            try:
+                inhalt = open(f).read()
+            except OSError:
+                continue
+            m = re.search(r'^uuid=(\S+)', inhalt, re.M)
+            if not m or m.group(1) in bekannt:
+                continue                     # NetworkManager kennt sie -> nichts zu tun
+            try:
+                os.makedirs(ZIEL, exist_ok=True)
+                # Name ohne den "netplan-"-Vorsatz, sonst haelt netplan sie faelschlich
+                # fuer eine von ihm erzeugte Datei und raeumt sie beim naechsten Lauf weg.
+                name = re.sub(r'^netplan-', '', os.path.basename(f))
+                ziel = os.path.join(ZIEL, name)
+                with open(ziel, 'w') as z:
+                    z.write(_portabel(inhalt))
+                os.chmod(ziel, 0o600)        # NetworkManager lehnt offenere Rechte ab
+                zurueck += 1
+                print(f"netzfix: Verbindung fehlte in NetworkManager -> wiederhergestellt: {name}")
+            except OSError as fehler:
+                print(f"netzfix: konnte {os.path.basename(f)} nicht zurueckschreiben: {fehler}")
+
+    if zurueck:
+        subprocess.run(['nmcli', 'connection', 'reload'], check=False)
+        print(f"netzfix: {zurueck} Verbindung(en) aus der Sicherung zurueckgeholt")
