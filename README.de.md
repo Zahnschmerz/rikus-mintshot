@@ -46,13 +46,13 @@ Fortgeschrittene können genau festlegen, welche Ordner weggelassen werden.
 
 ## Erste Schritte
 
-**Am einfachsten — das .deb-Paket:** Lade `rikus-mintshot_*.deb` von der
+**Am einfachsten — das .deb-Paket:** Lade `rikus-mintshot*.deb` von der
 [Releases](https://github.com/Zahnschmerz/rikus-mintshot/releases)-Seite herunter und
-öffne es mit deiner Paketverwaltung (oder `sudo apt install ~/Downloads/rikus-mintshot_*.deb`).
+öffne es mit deiner Paketverwaltung (oder `sudo apt install ~/Downloads/rikus-mintshot*.deb`).
 Danach **Rikus Mintshot** aus dem Anwendungsmenü starten.
 
 > 🔒 **Datei prüfen (freiwillig):** Rechtsklick auf den Download-Ordner → „Im Terminal
-> öffnen", dann `sha256sum rikus-mintshot_*.deb`. Die angezeigte Zahl muss mit der auf der
+> öffnen", dann `sha256sum rikus-mintshot*.deb`. Die angezeigte Zahl muss mit der auf der
 > [Releases](https://github.com/Zahnschmerz/rikus-mintshot/releases)-Seite übereinstimmen —
 > nur **eine** Datei nötig, kein zweiter Download.
 

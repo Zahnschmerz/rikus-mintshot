@@ -46,13 +46,13 @@ Advanced users can fine-tune exactly which folders to leave out.
 
 ## Getting started
 
-**Easiest — the .deb package:** download `rikus-mintshot_*.deb` from the
+**Easiest — the .deb package:** download `rikus-mintshot*.deb` from the
 [Releases](https://github.com/Zahnschmerz/rikus-mintshot/releases) page and open it
-with your package installer (or run `sudo apt install ~/Downloads/rikus-mintshot_*.deb`).
+with your package installer (or run `sudo apt install ~/Downloads/rikus-mintshot*.deb`).
 Then start **Rikus Mintshot** from your applications menu.
 
 > 🔒 **Verify the file (optional):** right-click the download folder → "Open in Terminal",
-> then `sha256sum rikus-mintshot_*.deb`. The number shown must match the one on the
+> then `sha256sum rikus-mintshot*.deb`. The number shown must match the one on the
 > [Releases](https://github.com/Zahnschmerz/rikus-mintshot/releases) page — only **one**
 > file needed, no second download.
 

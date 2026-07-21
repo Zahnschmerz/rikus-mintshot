@@ -29,16 +29,16 @@ nothing needs to be set up again.
 
 **Easiest — the ready-made package:**
 
-1. Download `rikus-mintshot_*.deb` from the
+1. Download `rikus-mintshot*.deb` from the
    [Releases page](https://github.com/Zahnschmerz/rikus-mintshot/releases).
 2. Double-click the file → your package manager opens → **"Install"**.
-   *(Or in a terminal: `sudo apt install ~/Downloads/rikus-mintshot_*.deb`)*
+   *(Or in a terminal: `sudo apt install ~/Downloads/rikus-mintshot*.deb`)*
 
    💡 **Tip:** File somewhere else? In that folder use **right-click →
    "Open in Terminal"** — that puts you in the right place automatically.
 
    🔒 **Verify the file (optional):** in the download folder use **right-click →
-   "Open in Terminal"**, then type `sha256sum rikus-mintshot_*.deb`. The long number
+   "Open in Terminal"**, then type `sha256sum rikus-mintshot*.deb`. The long number
    shown must match the one on the [releases page](https://github.com/Zahnschmerz/rikus-mintshot/releases)
    (and on the website) — then the file is genuine and intact. You only need **this one file**.
 3. Afterwards you'll find **Rikus Mintshot** in your **application menu**

@@ -29,16 +29,16 @@ funktioniert alles wie gewohnt, ohne dass du etwas neu einrichten musst.
 
 **Am einfachsten — das fertige Paket:**
 
-1. Lade `rikus-mintshot_*.deb` von der
+1. Lade `rikus-mintshot*.deb` von der
    [Releases-Seite](https://github.com/Zahnschmerz/rikus-mintshot/releases) herunter.
 2. Doppelklick auf die Datei → deine Paketverwaltung öffnet sich → **„Installieren"**.
-   *(Oder im Terminal: `sudo apt install ~/Downloads/rikus-mintshot_*.deb`)*
+   *(Oder im Terminal: `sudo apt install ~/Downloads/rikus-mintshot*.deb`)*
 
    💡 **Tipp:** Liegt die Datei woanders? Dann im Download-Ordner **Rechtsklick →
    „Im Terminal öffnen"** — dort bist du automatisch am richtigen Ort.
 
    🔒 **Datei prüfen (freiwillig):** Im Download-Ordner **Rechtsklick → „Im Terminal
-   öffnen"**, dann tippe `sha256sum rikus-mintshot_*.deb`. Die lange Zahl, die erscheint,
+   öffnen"**, dann tippe `sha256sum rikus-mintshot*.deb`. Die lange Zahl, die erscheint,
    muss mit der auf der [Releases-Seite](https://github.com/Zahnschmerz/rikus-mintshot/releases)
    (und auf der Webseite) übereinstimmen — dann ist die Datei echt und unbeschädigt.
    Du brauchst dafür **nur diese eine Datei**.
