@@ -33,7 +33,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "6.9"
+VERSION = "6.10"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/rikus-mintshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -1432,8 +1432,15 @@ class SnapshotApp(Gtk.Window):
                 self.store.append([os.path.basename(pfad), groesse_lesbar(st.st_size),
                                    datetime.datetime.fromtimestamp(st.st_mtime).strftime('%d.%m.%Y %H:%M'),
                                    pfad])
+            # ⚠️ Nur die EINGESETZTEN Werte entschaerfen, nicht die Vorlage —
+            # die enthaelt selbst <b>...</b>. Ohne markup_escape_text blieb die
+            # Zeile bei einem Ordnernamen mit "&" (z. B. "Musik & Filme") vollstaendig
+            # LEER, ohne jede Fehlermeldung: set_markup verwirft den ganzen Text,
+            # wenn ein einzelnes & darin steht. Die vier anderen set_markup-Stellen
+            # im Programm waren abgesichert, nur diese nicht.
             self.info_label.set_markup("<span size='small'>" + T['ablage'].format(
-                ordner=self.iso_ordner, platz=self._freier_platz()) + "</span>")
+                ordner=GLib.markup_escape_text(str(self.iso_ordner)),
+                platz=GLib.markup_escape_text(str(self._freier_platz()))) + "</span>")
             return False
         GLib.idle_add(_tun)
 

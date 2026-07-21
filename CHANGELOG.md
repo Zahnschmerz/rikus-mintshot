@@ -5,6 +5,25 @@ All releases of Rikus Mintshot, newest first.
 
 ---
 
+## 6.10 — 21. Juli 2026
+
+**🇩🇪 Bei Ordnernamen mit `&` blieb die Ablage-Zeile leer.**
+
+- **Behoben: Die Zeile „Ablageort: … · Freier Platz: …"** unten im Fenster war **vollständig leer**, wenn im Pfad ein kaufmännisches Und stand (z. B. `Musik & Filme`) — ohne Fehlermeldung. Dasselbe passierte bei spitzen Klammern (`Foto<2026>`). Ursache: Die Zeile darf Formatierung enthalten, und dort haben diese Zeichen eine Sonderbedeutung; ein einzelnes `&` lässt die ganze Zeile verwerfen. **Vier andere Stellen im Programm waren dagegen abgesichert, nur diese eine nicht.** Es ging dabei nichts kaputt — die ISO wurde weiterhin korrekt gebaut, man sah nur nicht mehr, wohin.
+- **Das Paket wird jetzt sauberer gebaut** (neues `bauen.sh` im Projekt):
+  - **`Installed-Size` wird eingetragen** — vorher meldete apt beim Installieren „0 B zusätzlich belegt".
+  - **Prüfsummen der Dateien (`md5sums`)** liegen bei, damit `dpkg -V`/`debsums` das Paket überprüfen können.
+  - **Das Änderungsprotokoll** liegt jetzt auch als `changelog.gz` bei, wo apt es findet.
+  - **Mit `xz` gepackt statt `zstd`** — zstd-Pakete können ältere Systeme nicht öffnen.
+  - Die Prüfsummen-Datei enthält nur noch den bloßen Dateinamen, damit `sha256sum -c` bei jedem funktioniert.
+
+**🇬🇧 With folder names containing `&`, the location line stayed empty.**
+
+- **Fixed: the line "Location: … · Free space: …"** at the bottom of the window was **completely empty** when the path contained an ampersand (e.g. `Musik & Filme`) — with no error message. The same happened with angle brackets (`Foto<2026>`). Cause: the line may contain formatting, where those characters have a special meaning; a single `&` makes the whole line be discarded. **Four other places in the program were guarded, this one was not.** Nothing was damaged — the ISO was still built correctly, you just could not see where it went.
+- **The package is now built more cleanly** (new `bauen.sh` in the project): `Installed-Size` is set (apt used to report "0 B"), `md5sums` are included, the changelog ships as `changelog.gz`, it is packed with **xz instead of zstd** (older systems cannot open zstd), and the checksum file contains only the bare filename.
+
+---
+
 ## 6.9 — 20. Juli 2026
 
 **🇩🇪 Zwei Fehler nach dem Wiederherstellen behoben — und eine fehlende Voraussetzung ergänzt.**
