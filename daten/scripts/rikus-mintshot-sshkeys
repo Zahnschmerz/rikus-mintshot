@@ -1,0 +1,74 @@
+#!/bin/bash
+# ---------------------------------------------------------------------------
+# Rikus Mintshot — SSH-Rechnerschluessel im Klon sicherstellen
+#
+# WARUM ES DAS GIBT (gefunden am 21.07.2026 auf dem ersten echten Klon-Dauersystem):
+#
+# Die Ausschlussliste des Schnappschusses laesst die SSH-Rechnerschluessel bewusst
+# weg — voellig richtig, denn sonst haetten ALLE Klone dieselben Schluessel, und
+# jeder Klon koennte sich als jeder andere ausgeben. In der Liste steht dazu:
+#
+#     # Exclude ssh_host_keys. New ones will be generated upon live boot.
+#
+# Diese Annahme stimmt nur zur Haelfte. Beim LIVE-Start erzeugt live-config sie.
+# Nach einer FESTEN INSTALLATION ueber den Installer passiert das NICHT — dort
+# bleibt /etc/ssh leer. Der SSH-Dienst startet dann gar nicht:
+#
+#     sshd: no hostkeys available -- exiting.
+#
+# Und zwar STILL: Am Rechner selbst merkt man nichts, alles laeuft. Erst wenn man
+# sich von aussen verbinden will, ist der Zugang tot — also genau im Notfall.
+#
+# Dieser Dienst schliesst die Luecke: Er prueft bei jedem Start, ob Schluessel da
+# sind, und erzeugt sie sonst. Auf einem System, das seine Schluessel hat, tut er
+# NICHTS (kein unnoetiger Aufwand, keine Aenderung).
+#
+# ⚠️ Er erzeugt IMMER frische Schluessel, kopiert nie welche — die Trennung
+#    zwischen Quelle und Klon bleibt also gewahrt.
+# ---------------------------------------------------------------------------
+set -u
+
+PROTOKOLL="/var/log/rikus-mintshot-sshkeys.log"
+
+sag() { echo "$(date '+%Y-%m-%d %H:%M:%S')  $*" >> "$PROTOKOLL" 2>/dev/null; }
+
+# Sind ueberhaupt Rechnerschluessel da?
+ANZAHL=$(ls /etc/ssh/ssh_host_*_key 2>/dev/null | wc -l)
+
+if [ "$ANZAHL" -gt 0 ]; then
+    # Normalfall auf jedem eingerichteten System: nichts zu tun.
+    exit 0
+fi
+
+sag "Keine SSH-Rechnerschluessel gefunden — das ist nach dem Wiederherstellen eines"
+sag "Klons normal (sie werden bewusst nicht mitkopiert). Erzeuge frische Schluessel."
+
+if ! command -v ssh-keygen >/dev/null 2>&1; then
+    sag "FEHLER: ssh-keygen ist nicht vorhanden — nichts getan."
+    exit 0        # kein harter Fehler: ohne openssh-server braucht es auch keine Schluessel
+fi
+
+ssh-keygen -A >> "$PROTOKOLL" 2>&1
+
+NEU=$(ls /etc/ssh/ssh_host_*_key 2>/dev/null | wc -l)
+sag "Erzeugt: $NEU Schluessel."
+
+if [ "$NEU" -eq 0 ]; then
+    sag "FEHLER: Es wurden keine Schluessel angelegt."
+    exit 0
+fi
+
+# Der SSH-Dienst ist beim Start schon gescheitert ("no hostkeys available") und
+# steht auf "failed". Ohne reset-failed weigert sich systemd, ihn neu zu starten
+# ("Start request repeated too quickly").
+if systemctl list-unit-files ssh.service >/dev/null 2>&1; then
+    systemctl reset-failed ssh.service >/dev/null 2>&1 || true
+    systemctl restart ssh.service >/dev/null 2>&1 || true
+    sag "SSH-Dienst neu gestartet: $(systemctl is-active ssh.service 2>/dev/null)"
+elif systemctl list-unit-files sshd.service >/dev/null 2>&1; then
+    systemctl reset-failed sshd.service >/dev/null 2>&1 || true
+    systemctl restart sshd.service >/dev/null 2>&1 || true
+    sag "SSH-Dienst neu gestartet: $(systemctl is-active sshd.service 2>/dev/null)"
+fi
+
+exit 0

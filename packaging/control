@@ -1,5 +1,5 @@
 Package: rikus-mintshot
-Version: 6.11
+Version: 7.0
 Architecture: all
 Maintainer: Gilbert Rikus <gilbert@rikus.info>
 Section: utils
@@ -7,7 +7,7 @@ Priority: optional
 Replaces: linux-mint-snapshot
 Provides: linux-mint-snapshot
 Conflicts: linux-mint-snapshot
-Depends: python3, python3-gi, gir1.2-gtk-3.0, polkitd, pkexec, calamares, live-boot, live-config-systemd, live-boot-initramfs-tools, xorriso, isolinux, syslinux-common, squashfs-tools, grub-efi-amd64-bin, grub-pc-bin, shim-signed, grub-efi-amd64-signed, mtools, dosfstools, gdisk, parted, e2fsprogs, rsync, procps, x11-xserver-utils, os-prober, efibootmgr, wget
+Depends: python3, python3-gi, gir1.2-gtk-3.0, polkitd, pkexec, calamares, live-boot, live-config-systemd, live-boot-initramfs-tools, xorriso, isolinux, syslinux-common, squashfs-tools, grub-efi-amd64-bin, grub-pc-bin, shim-signed, grub-efi-amd64-signed, mtools, dosfstools, gdisk, parted, e2fsprogs, rsync, procps, x11-xserver-utils, os-prober, efibootmgr, wget, openssh-client
 Recommends: mintstick
 Homepage: https://github.com/Zahnschmerz/rikus-mintshot
 Description: One-click bootable clone of your running Linux Mint system

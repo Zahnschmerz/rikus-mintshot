@@ -1,0 +1,21 @@
+[Unit]
+Description=Rikus Mintshot — SSH-Rechnerschluessel im Klon sicherstellen
+Documentation=https://github.com/Zahnschmerz/rikus-mintshot
+# Der Schnappschuss laesst die SSH-Rechnerschluessel bewusst weg (sonst haetten alle
+# Klone dieselben). Beim LIVE-Start erzeugt live-config sie neu — nach einer FESTEN
+# INSTALLATION aber NICHT. Dann startet sshd gar nicht ("no hostkeys available"),
+# und zwar still: erst beim Zugriff von aussen faellt es auf.
+# Dieser Dienst erzeugt fehlende Schluessel und startet sshd nach. Auf Systemen, die
+# ihre Schluessel haben, tut er nichts.
+DefaultDependencies=no
+After=local-fs.target
+Before=ssh.service sshd.service network-pre.target
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/rikus-mintshot-sshkeys
+
+[Install]
+WantedBy=multi-user.target

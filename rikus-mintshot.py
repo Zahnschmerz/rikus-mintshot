@@ -33,7 +33,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "6.11"
+VERSION = "7.0"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/rikus-mintshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -576,6 +576,11 @@ def fehlende_teile():
     if not os.path.exists('/etc/systemd/system/rikus-mintshot-netzfix.service'):
         fehlt.append('Netz-Autostart (WLAN schon beim Live-Boot vom Stick)' if SPRACHE == 'de'
                      else 'network auto-start (WiFi already on live boot)')
+    # Ohne diesen Dienst hat der Klon nach dem Wiederherstellen KEINE SSH-Rechnerschluessel
+    # (die werden bewusst nicht mitkopiert) -> sshd startet nicht -> Fernzugang still tot.
+    if not os.path.exists('/etc/systemd/system/rikus-mintshot-sshkeys.service'):
+        fehlt.append('SSH-Schluessel-Sicherung (Fernzugang im Klon)' if SPRACHE == 'de'
+                     else 'SSH host key safeguard (remote access in the clone)')
     if not os.path.exists('/usr/local/sbin/rikus-mintshot-dualboot'):
         fehlt.append('Dualboot-Menue (Windows neben Mint)' if SPRACHE == 'de'
                      else 'dual-boot menu (Windows alongside Mint)')
@@ -660,6 +665,16 @@ install -m 0755 "{DATEN}/scripts/rikus-mintshot-netzfix" /usr/local/sbin/
 # Hardware von selbst, ohne dass der Nutzer etwas tun muss.
 install -m 0644 "{DATEN}/scripts/rikus-mintshot-netzfix.service" /etc/systemd/system/
 systemctl enable rikus-mintshot-netzfix.service >/dev/null 2>&1 || true
+# SSH-Rechnerschluessel: Der Schnappschuss laesst sie bewusst weg (sonst haetten ALLE Klone
+# dieselben und koennten sich fuereinander ausgeben). In der Ausschlussliste steht dazu
+# "New ones will be generated upon live boot" - das stimmt aber NUR fuer den Live-Start.
+# Nach einer FESTEN INSTALLATION bleibt /etc/ssh leer, sshd startet gar nicht erst
+# ("no hostkeys available -- exiting") und der Fernzugang ist tot. Und zwar STILL: am
+# Rechner selbst faellt nichts auf, erst beim Zugriff von aussen - also im Notfall.
+# Am 21.07.2026 am ersten echten Klon-Dauersystem (asusmint) aufgetreten und belegt.
+install -m 0755 "{DATEN}/scripts/rikus-mintshot-sshkeys" /usr/local/sbin/
+install -m 0644 "{DATEN}/scripts/rikus-mintshot-sshkeys.service" /etc/systemd/system/
+systemctl enable rikus-mintshot-sshkeys.service >/dev/null 2>&1 || true
 # Dualboot: os-prober einschalten, damit ein daneben installiertes Windows automatisch
 # ins GRUB-Menue kommt (bei modernem Mint ist os-prober standardmaessig aus).
 install -m 0755 "{DATEN}/scripts/rikus-mintshot-dualboot" /usr/local/sbin/

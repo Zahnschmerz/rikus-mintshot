@@ -5,6 +5,27 @@ All releases of Rikus Mintshot, newest first.
 
 ---
 
+## 7.0 — 21. Juli 2026
+
+**🇩🇪 Nach dem Wiederherstellen war der Fernzugang (SSH) still tot.**
+
+- **Behoben: Im wiederhergestellten Klon fehlten die SSH-Rechnerschlüssel** — dadurch startete der SSH-Dienst gar nicht erst (`sshd: no hostkeys available -- exiting`). Man merkt davon **nichts**: Am Rechner selbst läuft alles normal, und erst wenn man sich von außen verbinden will, ist der Zugang tot — also ausgerechnet im Notfall.
+- **Warum das passierte:** Der Schnappschuss lässt die Schlüssel **absichtlich** weg. Das ist auch richtig so — sonst hätten alle Klone dieselben Schlüssel und könnten sich füreinander ausgeben. In der Ausschlussliste steht dazu „New ones will be generated upon live boot". Das stimmt aber **nur für den Live-Start vom Stick**. Nach einer **festen Installation** erzeugt sie niemand nach.
+- **Der Fix:** Ein kleiner Dienst prüft bei jedem Start, ob Schlüssel vorhanden sind, erzeugt sie sonst frisch und startet den SSH-Dienst nach. Auf einem System, das seine Schlüssel hat, tut er **nichts**. Es werden immer **neue** Schlüssel erzeugt, nie welche kopiert — die Trennung zwischen Quelle und Klon bleibt gewahrt.
+- **Die Ersteinrichtung meldet es jetzt**, wenn dieser Schutz fehlt.
+- **Eine Abhängigkeit kam dazu: `openssh-client`** — daraus stammt das Werkzeug, das die Schlüssel erzeugt. Auf Linux Mint ist es ohnehin immer vorhanden; auf einem abgespeckten System wird es jetzt sauber mitinstalliert, statt dass der Schutz still nichts täte.
+- Gefunden am ersten echten Dauersystem, das aus einem Klon entstanden ist: Ein mit 6.11 gebauter Klon läuft seit dem 21.07. als Alltagssystem auf einem anderen Laptop. Dort fiel auf, dass zwei von drei Fernzugangswegen tot waren — die Ursache war dieselbe.
+
+**🇬🇧 After restoring, remote access (SSH) was silently dead.**
+
+- **Fixed: the restored clone had no SSH host keys** — so the SSH service never started (`sshd: no hostkeys available -- exiting`). You notice nothing locally; only a connection attempt from outside reveals it — exactly when you need it most.
+- **Why:** The snapshot deliberately excludes host keys (otherwise every clone would share the same ones and could impersonate each other). The exclude list says „New ones will be generated upon live boot" — true for a **live** boot, but nobody regenerates them after a **permanent install**.
+- **The fix:** A small service checks at every boot whether host keys exist, generates fresh ones if not, and restarts SSH. On a system that has its keys it does **nothing**. Keys are always generated, never copied — source and clone stay separate.
+- **First-run setup now reports** when this safeguard is missing.
+- **One dependency was added: `openssh-client`** — it provides the tool that generates the keys. Always present on Linux Mint anyway; on a slim system it is now pulled in properly instead of the safeguard silently doing nothing.
+
+---
+
 ## 6.11 — 21. Juli 2026
 
 **🇩🇪 Das Programm sagt jetzt Bescheid, wenn es eine neuere Fassung gibt.**
