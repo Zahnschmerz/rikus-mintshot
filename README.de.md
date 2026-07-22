@@ -72,6 +72,14 @@ Aufgebaut auf bewährten, bestehenden Werkzeugen — dieses Projekt verbindet si
 - **Debian `live-boot` / `live-config`** — die Live-Boot-Technik.
 - **[Calamares](https://calamares.io/)** — der grafische Installer, mit eigener Klon-Konfiguration (keine Benutzer-/Sprach-/Tastatur-Seiten — alles kommt aus deinem Klon).
 
+## Schwesterprogramm
+
+**[Rikus Zram](https://zram.rikus.info)** — zram, swappiness und Swap-Dateien mit Schiebereglern einstellen statt im Terminal. Gleiche Idee, gleiche Grundsätze: normale Sprache, Vorschau vor jeder Änderung, Sicherung jeder Datei — und danach misst es selbst nach, ob die Änderung wirklich gegriffen hat.
+
+Läuft auf denselben Systemen wie Mintshot — mit systemd und mit SysVinit, auf x86 und ARM. Deutsch und Englisch.
+
+[Webseite](https://zram.rikus.info) · [Quellcode](https://github.com/Zahnschmerz/rikus-zram)
+
 ## Lizenz
 
 GPL-3.0 — frei zu nutzen, studieren, teilen und ändern, für immer. Siehe [LICENSE](LICENSE).
