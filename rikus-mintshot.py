@@ -33,7 +33,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "7.1"
+VERSION = "7.2"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/rikus-mintshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -830,7 +830,17 @@ if [ -d "$SB_ISOROOT/isolinux" ] && [ -f "$SB_SHIM" ] && [ -f "$SB_GRUB" ] && co
     [ -f "$SB_MM" ] && cp "$SB_MM" "$SB_ISOROOT/EFI/BOOT/mmx64.efi"
     cp "$SB_FWD" "$SB_ISOROOT/EFI/ubuntu/grub.cfg"
     rm -f "$SB_FWD" "$SB_ISOROOT/efi/boot/bootx64.efi"
-    if xorriso -as mkisofs -r -J -joliet-long -l -iso-level 3 \\
+    # --- Platz pruefen: der Umbau schreibt die neue ISO NEBEN die alte und braucht darum
+    #     kurz das Doppelte an ISO-Platz. Reicht es nicht, brechen wir SAUBER mit klarer
+    #     Meldung ab (statt xorriso mittendrin scheitern zu lassen) -- die fertige normale
+    #     ISO bleibt unversehrt, der Nutzer wird gewarnt (kein stiller Ausfall mehr).
+    SB_FREI=$(df -P "$SB_SNAP" | awk 'NR==2{{print $4*1024}}')
+    SB_SZ=$(stat -c%s "$SB_ISO" 2>/dev/null || echo 0)
+    if [ "${{SB_FREI:-0}}" -lt "${{SB_SZ:-0}}" ] 2>/dev/null; then
+      SB_MB=$(( ( ${{SB_SZ:-0}} - ${{SB_FREI:-0}} ) / 1048576 + 100 ))
+      echo "!!!SECURE-BOOT-PLATZ:$SB_MB!!! Fuer den Secure-Boot-Umbau fehlt Platz (~$SB_MB MB)."
+      echo "Die ISO ist fertig, aber NICHT Secure-Boot-faehig. Platz freimachen und neu bauen."
+    elif xorriso -as mkisofs -r -J -joliet-long -l -iso-level 3 \\
         -isohybrid-mbr "$SB_PFX" -partition_offset 16 -V "$SB_VOL" \\
         -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table \\
         -eltorito-alt-boot -e '--interval:appended_partition_2:all::' -no-emul-boot \\
@@ -840,8 +850,8 @@ if [ -d "$SB_ISOROOT/isolinux" ] && [ -f "$SB_SHIM" ] && [ -f "$SB_GRUB" ] && co
       sha256sum "$SB_ISO" > "$SB_ISO.sha256"
       echo "Secure-Boot-ISO fertig: $(basename "$SB_ISO")"
     else
-      echo "Secure-Boot-Nachbau fehlgeschlagen - normale ISO bleibt erhalten."
       rm -f "$SB_ISO.sb"
+      echo "!!!SECURE-BOOT-FEHLGESCHLAGEN!!! Der Umbau ist gescheitert - die normale ISO bleibt erhalten."
     fi
   fi
 fi
@@ -1825,6 +1835,20 @@ class SnapshotApp(Gtk.Window):
                 with open(sb_skript, 'w') as f:
                     f.write('#!/bin/bash\n' + secure_boot_nachbau_bash(self.iso_ordner, self.work_ordner))
                 innen += f' && bash "{sb_skript}"'  # nur bei ERFOLGREICHEM refracta-Bau
+            else:
+                # Die signierten Bausteine fehlen -> die ISO wird NICHT Secure-Boot-faehig.
+                # KEIN stiller Ausfall: einen Marker ins Log schreiben (immer, mit ';'), den
+                # die App nach dem Bau als sichtbare Warnung + Behebungsbefehl zeigt.
+                fehlend = []
+                if not (os.path.exists(SHIM_SIGNED) or os.path.exists(SHIM_SIGNED_ALT)):
+                    fehlend.append('shim-signed')
+                if not os.path.exists(GRUB_SIGNED):
+                    fehlend.append('grub-efi-amd64-signed')
+                if not os.path.exists(ISOHDPFX):
+                    fehlend.append('isolinux')
+                if shutil.which('mformat') is None:
+                    fehlend.append('mtools')
+                innen += f' ; echo "!!!SECURE-BOOT-BAUSTEIN-FEHLT:{" ".join(fehlend)}!!!"'
             kern_befehl = f"{self.root} bash -c '{innen}'"
 
         open(LOG_DATEI, 'w').close()
@@ -1939,6 +1963,56 @@ class SnapshotApp(Gtk.Window):
             return False
         return True
 
+    def _secure_boot_warnung(self, log_text):
+        """Prueft das Bau-Protokoll auf die Secure-Boot-Marker und gibt (Titel, Text) fuer eine
+        sichtbare Warnung zurueck -- oder None, wenn die ISO Secure-Boot-faehig ist. So erfaehrt der
+        Nutzer SOFORT (nicht erst am fremden Rechner), wenn der Umbau nicht lief, und was zu tun ist."""
+        de = SPRACHE == 'de'
+        # 1) signierte Bausteine fehlen
+        m = re.search(r'!!!SECURE-BOOT-BAUSTEIN-FEHLT:([^!]*)!!!', log_text)
+        if m:
+            pakete = m.group(1).strip() or 'shim-signed grub-efi-amd64-signed isolinux mtools'
+            if de:
+                return ("ISO ist NICHT Secure-Boot-fähig",
+                        "Die ISO ist fertig, startet aber NICHT auf Rechnern mit eingeschaltetem "
+                        "Secure Boot — es fehlen die signierten Bausteine.\n\n"
+                        f"Fehlt: {pakete}\n\n"
+                        "So behebst du es (einmalig), dann neu bauen:\n\n"
+                        f"sudo apt install {pakete}")
+            return ("ISO is NOT Secure-Boot-capable",
+                    "The ISO is finished but will NOT start on machines with Secure Boot on — "
+                    "the signed building blocks are missing.\n\n"
+                    f"Missing: {pakete}\n\n"
+                    "Fix it once, then build again:\n\n"
+                    f"sudo apt install {pakete}")
+        # 2) Platz war zu knapp fuer die zweite ISO
+        m = re.search(r'!!!SECURE-BOOT-PLATZ:(\d+)!!!', log_text)
+        if m:
+            mb = m.group(1)
+            if de:
+                return ("ISO ist NICHT Secure-Boot-fähig (zu wenig Platz)",
+                        "Die ISO ist fertig, aber der Secure-Boot-Umbau brauchte kurz Platz für eine "
+                        f"zweite ISO — es fehlten etwa {mb} MB. Deshalb ist die ISO NICHT "
+                        "Secure-Boot-fähig (startet nicht bei eingeschaltetem Secure Boot).\n\n"
+                        "So bekommst du eine Secure-Boot-ISO:\n"
+                        f"Mach mindestens {mb} MB frei (oder lege den Ablageort auf eine Platte mit "
+                        "mehr Platz — Knopf „Ablageort ändern“) und baue dann neu.")
+            return ("ISO is NOT Secure-Boot-capable (not enough space)",
+                    "The ISO is finished, but making it Secure-Boot-capable briefly needed room for "
+                    f"a second ISO — about {mb} MB were missing. So the ISO is NOT Secure-Boot-capable.\n\n"
+                    f"To get one: free at least {mb} MB (or pick a destination with more room), then rebuild.")
+        # 3) anderer xorriso-Fehler
+        if '!!!SECURE-BOOT-FEHLGESCHLAGEN!!!' in log_text:
+            if de:
+                return ("ISO ist NICHT Secure-Boot-fähig",
+                        "Die ISO ist fertig, aber der Secure-Boot-Umbau ist fehlgeschlagen — sie "
+                        "startet nicht auf Rechnern mit eingeschaltetem Secure Boot.\n\n"
+                        "Einzelheiten stehen unter „Technische Einzelheiten“. Versuche einen neuen Bau.")
+            return ("ISO is NOT Secure-Boot-capable",
+                    "The ISO is finished, but making it Secure-Boot-capable failed — it will not "
+                    "start on machines with Secure Boot enabled.\n\nSee „Technical details“. Try again.")
+        return None
+
     def _lauf_fertig(self):
         self.lauf_aktiv = False
         self.bau_pid = None
@@ -1952,9 +2026,10 @@ class SnapshotApp(Gtk.Window):
 
         try:
             with open(LOG_DATEI, errors='replace') as f:
-                erfolg_im_log = 'All finished!' in f.read()
+                log_text = f.read()
         except FileNotFoundError:
-            erfolg_im_log = False
+            log_text = ''
+        erfolg_im_log = 'All finished!' in log_text
         neue = [p for p in glob.glob(os.path.join(self.iso_ordner, '*.iso'))
                 if self.bau_startzeit and datetime.datetime.fromtimestamp(
                     os.path.getmtime(p)) > self.bau_startzeit]
@@ -1969,6 +2044,11 @@ class SnapshotApp(Gtk.Window):
                                                groesse=groesse_lesbar(os.path.getsize(iso)),
                                                liveuser=LIVE_USER))
             ergebnis_ok = True
+            # Secure-Boot-Warnung: die ISO ist fertig, aber der Secure-Boot-Umbau lief NICHT
+            # (Platz zu knapp / Bausteine fehlen / xorriso-Fehler). Kein stiller Ausfall mehr.
+            sb_warn = self._secure_boot_warnung(log_text)
+            if sb_warn:
+                self.melde(Gtk.MessageType.WARNING, sb_warn[0], sb_warn[1])
         else:
             self.balken.set_fraction(0.0)
             self.balken.set_text("")

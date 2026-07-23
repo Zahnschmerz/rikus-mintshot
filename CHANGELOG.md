@@ -5,6 +5,20 @@ All releases of Rikus Mintshot, newest first.
 
 ---
 
+## 7.2 — 23. Juli 2026
+
+**🇩🇪 Wenn die ISO nicht Secure-Boot-fähig wird, sagt das Programm es jetzt — statt still eine normale ISO zu liefern.**
+
+- **Behoben: stiller Ausfall beim Secure-Boot-Umbau.** Damit die ISO auch mit eingeschaltetem Secure Boot startet, baut das Programm sie am Ende mit einer signierten Startkette neu zusammen. Schlug dieser Schritt fehl, lieferte das Programm **stillschweigend** eine normale ISO — man merkte es erst, wenn ein fremder Rechner mit Secure Boot den Stick abwies. Jetzt erscheint eine **klare Warnung** mit dem Grund (fehlende Bausteine, zu wenig Platz oder ein anderer Fehler) und was zu tun ist.
+- **Behoben: der Umbau scheiterte bei großen ISOs am Platz.** Beim Neu-Zusammenbauen liegen kurz die **alte und die neue** ISO gleichzeitig auf der Platte — bei einer großen ISO (etwa „System + Home") wird der Platz dann leicht knapp. Bisher brach der Schritt mitten im Packen ab. Jetzt prüft das Programm den Platz **vorher** und meldet klar, wie viel fehlt, damit man Platz freimachen (oder einen anderen Ablageort wählen) und neu bauen kann. Die fertige normale ISO bleibt dabei unversehrt.
+
+**🇬🇧 If the ISO can't be made Secure-Boot-capable, the program now says so — instead of silently handing you a normal ISO.**
+
+- **Fixed: silent failure of the Secure-Boot step.** To make the ISO start with Secure Boot enabled, the program rebuilds it at the end with a signed boot chain. If that step failed, the program **silently** produced a normal ISO — you only found out when a machine with Secure Boot rejected the stick. Now a **clear warning** appears with the reason (missing building blocks, too little space, or another error) and what to do.
+- **Fixed: the step ran out of space on large ISOs.** Rebuilding briefly keeps the **old and the new** ISO on disk at the same time — on a large ISO (e.g. "System + Home") space can run short. It used to abort mid-pack; now the program checks space **beforehand** and reports exactly how much is missing, so you can free space (or pick another destination) and rebuild. The finished normal ISO is left intact.
+
+---
+
 ## 7.1 — 23. Juli 2026
 
 **🇩🇪 Persistenz ließ sich auf vielen Sticks nicht einrichten („Invalid partition data!").**
