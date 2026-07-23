@@ -57,20 +57,22 @@ Danach **Rikus Mintshot** aus dem Anwendungsmenü starten.
 > nur **eine** Datei nötig, kein zweiter Download.
 
 **Oder aus dem Quellcode:** `python3 rikus-mintshot.py` starten (oder doppelklicken und
-„Ausführen" wählen). Beim ersten Start prüft die App, was fehlt (vor allem der
-`refractasnapshot`-Motor, der nicht in Mints Standard-Quellen ist) und bietet an, es
-zu installieren — eine Passwort-Abfrage, ein paar Minuten.
+„Ausführen" wählen). Beim ersten Start prüft die App, was fehlt (vor allem ein
+Basis-Hilfsprogramm für den ISO-Bau, das nicht in Mints Standard-Quellen ist) und bietet
+an, es zu installieren — eine Passwort-Abfrage, ein paar Minuten.
 
 Ausführliche Schritt-für-Schritt-Anleitung: **[ANLEITUNG.md](ANLEITUNG.md)** (Deutsch) / **[GUIDE.md](GUIDE.md)** (English).
 Was sich in jeder Fassung geändert hat: **[CHANGELOG.md](CHANGELOG.md)**.
 
-## Unter der Haube & Danksagung
+## Was drinsteckt
 
-Aufgebaut auf bewährten, bestehenden Werkzeugen — dieses Projekt verbindet sie mit einer freundlichen Oberfläche:
+Rikus Mintshot ist ein **eigenständiges Programm** — der Großteil ist eigene Technik:
 
-- **[Refracta](https://sourceforge.net/projects/refracta/)** (refractasnapshot / refractainstaller) — der eigentliche Motor zum Bauen der Schnappschuss-ISO.
-- **Debian `live-boot` / `live-config`** — die Live-Boot-Technik.
-- **[Calamares](https://calamares.io/)** — der grafische Installer, mit eigener Klon-Konfiguration (keine Benutzer-/Sprach-/Tastatur-Seiten — alles kommt aus deinem Klon).
+- **Secure-Boot-Kette** (signiertes shim + GRUB): Der Stick bootet auch mit **eingeschaltetem** Secure Boot — ohne dass du im BIOS etwas abschalten musst.
+- **Der Klon läuft auf fremder Hardware:** WLAN, LAN, die SSH-Rechnerschlüssel und die Firmware-Startreihenfolge werden **im Klon selbst** in Ordnung gebracht, nicht an den Ursprungsrechner gebunden.
+- **Persistenz** auf dem Stick (für MBR- **und** GPT-Sticks), **ehrliche Platzvorschau** vor dem Bau, **Update-Hinweis** und ein **eigens eingerichteter Installer**, der Konto, Sprache und Einstellungen **1:1** übernimmt — ganz ohne neue Benutzer-Anlage.
+
+Wie jedes Linux-Programm steht es auf offenen Bausteinen (u. a. **[Calamares](https://calamares.io/)** für den Installer und Debian **live-boot/live-config** für den Live-Start). Den ersten Schritt — dein laufendes System in eine Basis-ISO einzusammeln — erledigt ein bewährtes Hilfsprogramm, das beim ersten Start automatisch eingerichtet wird.
 
 ## Schwesterprogramm
 

@@ -33,7 +33,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 
-VERSION = "7.2"
+VERSION = "7.3"
 APP_ORDNER = os.path.dirname(os.path.abspath(__file__))
 SYSTEM_ORDNER = '/opt/rikus-mintshot'
 DATEN = os.path.join(APP_ORDNER, 'daten')
@@ -124,10 +124,11 @@ SCHRITT_MUSTER = re.compile(r'(?:Schritt|Step) (\d)')
 
 FAKE_MOTOR = (
     "echo 'Selbsttest: pruefe Voraussetzungen'; sleep 1; "
-    "echo 'mksquashfs startet'; "
+    "echo 'Squashing the filesystem...'; "
     "for p in 5 25 50 75 95; do echo \"[==    ] 100/2000 ${p}%\"; sleep 1; done; "
     "echo 'Creating CD/DVD image file...'; sleep 1; "
     "touch \"$MINT_SNAP_TESTORDNER/selbsttest.iso\"; "
+    "echo 'Schritt 4: Secure-Boot-faehig machen ...'; sleep 1; "
     "echo 'All finished!'"
 )
 
@@ -536,7 +537,7 @@ def _system_app_version():
 def fehlende_teile():
     fehlt = []
     if not shutil.which('refractasnapshot'):
-        fehlt.append('refractasnapshot (SourceForge)')
+        fehlt.append('Basis-Werkzeug für den ISO-Bau')
     if not shutil.which('calamares'):
         fehlt.append('calamares')
     for prog, paket in (('mksquashfs', 'squashfs-tools'), ('xorriso', 'xorriso'),
@@ -633,7 +634,7 @@ if ! command -v refractasnapshot >/dev/null; then
   if wget -q -O "$T/refractasnapshot-base.deb" "{REFRACTA_DEB_URL}"; then
     dpkg -i "$T/refractasnapshot-base.deb" || apt-get -f install -y || FEHLER=1
   else
-    echo "DOWNLOAD-FEHLER refractasnapshot"; FEHLER=1
+    echo "DOWNLOAD-FEHLER Basis-Werkzeug für den ISO-Bau"; FEHLER=1
   fi
   rm -rf "$T"
 fi
@@ -830,28 +831,55 @@ if [ -d "$SB_ISOROOT/isolinux" ] && [ -f "$SB_SHIM" ] && [ -f "$SB_GRUB" ] && co
     [ -f "$SB_MM" ] && cp "$SB_MM" "$SB_ISOROOT/EFI/BOOT/mmx64.efi"
     cp "$SB_FWD" "$SB_ISOROOT/EFI/ubuntu/grub.cfg"
     rm -f "$SB_FWD" "$SB_ISOROOT/efi/boot/bootx64.efi"
-    # --- Platz pruefen: der Umbau schreibt die neue ISO NEBEN die alte und braucht darum
-    #     kurz das Doppelte an ISO-Platz. Reicht es nicht, brechen wir SAUBER mit klarer
-    #     Meldung ab (statt xorriso mittendrin scheitern zu lassen) -- die fertige normale
-    #     ISO bleibt unversehrt, der Nutzer wird gewarnt (kein stiller Ausfall mehr).
-    SB_FREI=$(df -P "$SB_SNAP" | awk 'NR==2{{print $4*1024}}')
-    SB_SZ=$(stat -c%s "$SB_ISO" 2>/dev/null || echo 0)
-    if [ "${{SB_FREI:-0}}" -lt "${{SB_SZ:-0}}" ] 2>/dev/null; then
-      SB_MB=$(( ( ${{SB_SZ:-0}} - ${{SB_FREI:-0}} ) / 1048576 + 100 ))
-      echo "!!!SECURE-BOOT-PLATZ:$SB_MB!!! Fuer den Secure-Boot-Umbau fehlt Platz (~$SB_MB MB)."
-      echo "Die ISO ist fertig, aber NICHT Secure-Boot-faehig. Platz freimachen und neu bauen."
-    elif xorriso -as mkisofs -r -J -joliet-long -l -iso-level 3 \\
+    # --- Der Umbau baut die Secure-Boot-ISO aus dem Arbeitsordner ($SB_ISOROOT) neu.
+    #     Je nach Platz auf zwei Wegen:
+    #       a) Platz fuer eine ZWEITE ISO da -> sicherer Weg: neue neben der alten bauen,
+    #          erst bei Erfolg umbenennen. Die fertige ISO bleibt bis zuletzt unversehrt.
+    #       b) nur knapp Platz, ABER der Datenkern (filesystem.squashfs) liegt vollstaendig
+    #          im Arbeitsordner -> die fertige ISO ist nur dessen Kopie. Wir loeschen sie,
+    #          um Platz zu schaffen, und bauen direkt neu. So werden auch grosse ISOs auf
+    #          knappen Platten Secure-Boot-faehig, ganz ohne Aufraeumen von Hand.
+    #       c) nicht mal das -> saubere Meldung, die fertige (normale) ISO bleibt erhalten.
+    sb_baue_iso() {{  # $1 = Ziel-ISO; baut aus $SB_ISOROOT
+      xorriso -as mkisofs -r -J -joliet-long -l -iso-level 3 \\
         -isohybrid-mbr "$SB_PFX" -partition_offset 16 -V "$SB_VOL" \\
         -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table \\
         -eltorito-alt-boot -e '--interval:appended_partition_2:all::' -no-emul-boot \\
         -append_partition 2 {ESP_TYP_GUID} "$SB_EFI" -appended_part_as_gpt \\
-        -o "$SB_ISO.sb" "$SB_ISOROOT"; then
-      mv -f "$SB_ISO.sb" "$SB_ISO"
-      sha256sum "$SB_ISO" > "$SB_ISO.sha256"
-      echo "Secure-Boot-ISO fertig: $(basename "$SB_ISO")"
+        -o "$1" "$SB_ISOROOT"
+    }}
+    SB_FREI=$(df -P "$SB_SNAP" | awk 'NR==2{{print $4*1024}}')
+    SB_SZ=$(stat -c%s "$SB_ISO" 2>/dev/null || echo 0)
+    # Beweis, dass der Datenkern sicher im Arbeitsordner liegt: eine squashfs, die mindestens
+    # halb so gross ist wie die fertige ISO -> die Nutzerdaten sind da, die ISO ist neu baubar.
+    SB_SQUASH=""
+    for c in "$SB_ISOROOT"/live/*.squashfs "$SB_ISOROOT"/casper/*.squashfs; do
+      [ -f "$c" ] && SB_SQUASH="$c" && break
+    done
+    SB_SQSZ=$(stat -c%s "$SB_SQUASH" 2>/dev/null || echo 0)
+    SB_MB=$(( ( ${{SB_SZ:-0}} - ${{SB_FREI:-0}} ) / 1048576 + 100 ))
+    if [ "${{SB_FREI:-0}}" -ge "${{SB_SZ:-0}}" ] 2>/dev/null; then
+      if sb_baue_iso "$SB_ISO.sb"; then
+        mv -f "$SB_ISO.sb" "$SB_ISO"
+        sha256sum "$SB_ISO" > "$SB_ISO.sha256"
+        echo "Secure-Boot-ISO fertig: $(basename "$SB_ISO")"
+      else
+        rm -f "$SB_ISO.sb"
+        echo "!!!SECURE-BOOT-FEHLGESCHLAGEN!!! Der Umbau ist gescheitert - die normale ISO bleibt erhalten."
+      fi
+    elif [ "${{SB_SQSZ:-0}}" -ge $(( ${{SB_SZ:-0}} / 2 )) ] && [ "${{SB_FREI:-0}}" -ge 209715200 ] 2>/dev/null; then
+      echo "Schritt 4: wenig Platz - die fertige ISO wird direkt aus dem Arbeitsordner ersetzt ..."
+      rm -f "$SB_ISO" "$SB_ISO.sha256"
+      if sb_baue_iso "$SB_ISO"; then
+        sha256sum "$SB_ISO" > "$SB_ISO.sha256"
+        echo "Secure-Boot-ISO fertig: $(basename "$SB_ISO")"
+      else
+        rm -f "$SB_ISO"
+        echo "!!!SECURE-BOOT-ERSATZ-WEG:$SB_MB!!! Der platzsparende Secure-Boot-Umbau ist gescheitert."
+      fi
     else
-      rm -f "$SB_ISO.sb"
-      echo "!!!SECURE-BOOT-FEHLGESCHLAGEN!!! Der Umbau ist gescheitert - die normale ISO bleibt erhalten."
+      echo "!!!SECURE-BOOT-PLATZ:$SB_MB!!! Fuer den Secure-Boot-Umbau fehlt Platz (~$SB_MB MB)."
+      echo "Die ISO ist fertig, aber NICHT Secure-Boot-faehig. Platz freimachen und neu bauen."
     fi
   fi
 fi
@@ -1147,6 +1175,8 @@ class SnapshotApp(Gtk.Window):
         self.bau_startzeit = None
         self._log_pos = 0
         self._log_rest = b''
+        self._phase_basis = ""       # aktueller Phasentext OHNE Zeitzusatz
+        self._letzte_sekunde = None  # Zeitanzeige nur 1x/Sekunde neu zeichnen
         self._bau_phase = 1
         self._phase_merker = ("", -1)
         self._schritte_gesehen = set()
@@ -1474,7 +1504,9 @@ class SnapshotApp(Gtk.Window):
         if s:
             self._schritte_gesehen.add(int(s.group(1)))
         def _tun():
-            self.phase_label.set_markup(f"<b>{GLib.markup_escape_text(text)}</b>")
+            self._phase_basis = text
+            self._letzte_sekunde = None        # sofortige Zeit-Aktualisierung erzwingen
+            self.phase_label.set_markup(self._phase_markup())
             if anteil is not None:
                 self.balken.set_fraction(min(anteil, 1.0))
                 self.balken.set_text(f"{prozent} %")
@@ -1532,9 +1564,36 @@ class SnapshotApp(Gtk.Window):
             return False
         GLib.idle_add(_tun)
 
+    def _bau_sekunden(self):
+        """Verstrichene Bau-Zeit in Sekunden — robust gegen fehlende/andere Startzeit-Typen."""
+        if not self.bau_startzeit:
+            return None
+        try:
+            start = self.bau_startzeit
+            if not isinstance(start, datetime.datetime):
+                start = datetime.datetime.fromtimestamp(float(start))
+            s = int((datetime.datetime.now() - start).total_seconds())
+            return s if s >= 0 else None
+        except Exception:
+            return None
+
+    def _phase_markup(self):
+        """Phasentext fett + (waehrend des Baus) die verstrichene Zeit als ⏱ M:SS."""
+        txt = f"<b>{GLib.markup_escape_text(self._phase_basis)}</b>"
+        s = self._bau_sekunden()
+        if self.lauf_aktiv and s is not None:
+            txt += f"   <span size='small' foreground='#888'>⏱ {s // 60}:{s % 60:02d} Min</span>"
+        return txt
+
     def _puls(self):
         if self.lauf_aktiv and self.balken.get_fraction() == 0.0:
             self.balken.pulse()
+        # Zeitanzeige mitlaufen lassen — nur bei Sekundenwechsel neu zeichnen
+        if self.lauf_aktiv and self._phase_basis:
+            s = self._bau_sekunden()
+            if s != self._letzte_sekunde:
+                self._letzte_sekunde = s
+                self.phase_label.set_markup(self._phase_markup())
         return self.lauf_aktiv
 
     def _details_anhaengen(self, text):
@@ -1808,7 +1867,10 @@ class SnapshotApp(Gtk.Window):
             os.symlink(quelle, ziel)
 
         if self.selbsttest:
-            kern_befehl = FAKE_MOTOR
+            # Klammern, damit der spaetere ">> LOG" fuer ALLE Zeilen gilt (nicht nur die
+            # letzte) — sonst landet die Ausgabe bis auf "All finished!" im Nichts und die
+            # Phasen-/Prozentanzeige bekommt im Selbsttest nie etwas zu sehen.
+            kern_befehl = "{ " + FAKE_MOTOR + " ; }"
         else:
             grub_v, live_v = boot_vorlagen_fuellen()
             # EIN Root-Aufruf: Vorlagen einspielen + Motor starten (+ Secure-Boot-Nachbau)
@@ -1915,16 +1977,22 @@ class SnapshotApp(Gtk.Window):
                     continue
                 zeilen.append(zeile)
                 klein = zeile.lower()
-                if self._bau_phase < 2 and ('mksquashfs' in klein
-                                            or 'creating 4.0 filesystem' in klein
-                                            or 'squashing' in klein):
+                # WICHTIG: refracta listet im 1. Schritt JEDEN kopierten Dateinamen ins
+                # Log. Zu allgemeine Marker ('mksquashfs', 'secure-boot-f') trafen darum
+                # auch Dateinamen (z. B. /usr/bin/mksquashfs oder eine Vault-Notiz
+                # "...Secure-Boot-Fallback.md") und liessen den Balken auf 95% springen,
+                # waehrend die Komprimierung noch lief. Nur echte Fortschritts-Meldungen
+                # von refracta (ganze Saetze) bzw. unsere eigene "Schritt 4:"-Meldung
+                # duerfen die Phase weiterschalten.
+                if self._bau_phase < 2 and ('squashing the filesystem' in klein
+                                            or 'creating 4.0 filesystem on' in klein):
                     self._bau_phase = 2
                     self.setze_phase(T['schritt2'], 0.01)
                 elif self._bau_phase < 3 and ('creating cd/dvd image' in klein
                                               or 'iso image produced' in klein):
                     self._bau_phase = 3
                     self.setze_phase(T['schritt3'], 0.90)
-                elif self._bau_phase < 4 and 'secure-boot-f' in klein:
+                elif self._bau_phase < 4 and 'schritt 4:' in klein:
                     self._bau_phase = 4
                     self.setze_phase(T['schritt4'], 0.95)
                 if self._bau_phase == 2 and ']' in zeile:
@@ -2001,6 +2069,24 @@ class SnapshotApp(Gtk.Window):
                     "The ISO is finished, but making it Secure-Boot-capable briefly needed room for "
                     f"a second ISO — about {mb} MB were missing. So the ISO is NOT Secure-Boot-capable.\n\n"
                     f"To get one: free at least {mb} MB (or pick a destination with more room), then rebuild.")
+        # 2c) Platz-Fix hat die fertige ISO ersetzt, aber der Umbau scheiterte dabei -> keine ISO
+        m = re.search(r'!!!SECURE-BOOT-ERSATZ-WEG:(\d+)!!!', log_text)
+        if m:
+            mb = m.group(1)
+            if de:
+                return ("Kein Abbild — Secure-Boot-Umbau bei knappem Platz gescheitert",
+                        "Der Klon selbst war fertig, aber der Platz reichte nicht, um die Secure-Boot-ISO "
+                        "neben der fertigen zu bauen. Deshalb wurde die fertige ISO ersetzt — und dabei ging "
+                        "der Umbau schief, sodass kein Abbild übrig blieb.\n\n"
+                        "So geht es sicher:\n"
+                        f"Mach etwa {mb} MB frei (oder wähle über „Ablageort ändern“ eine Platte mit mehr "
+                        "Platz) und baue neu. Dann bleibt die fertige ISO während des Umbaus erhalten.")
+            return ("No image — Secure Boot rebuild failed on low space",
+                    "The clone itself was finished, but there was not enough room to build the Secure-Boot "
+                    "ISO next to the finished one. The finished ISO was therefore replaced — and the rebuild "
+                    "failed, leaving no image.\n\n"
+                    f"To be safe: free about {mb} MB (or pick a destination with more room via „Change "
+                    "destination“) and build again. Then the finished ISO is kept during the rebuild.")
         # 3) anderer xorriso-Fehler
         if '!!!SECURE-BOOT-FEHLGESCHLAGEN!!!' in log_text:
             if de:
@@ -2038,7 +2124,11 @@ class SnapshotApp(Gtk.Window):
             iso = max(neue, key=os.path.getmtime)
             self.balken.set_fraction(1.0)
             self.balken.set_text("100 %")
-            self.setze_phase(T['fertig_phase'].format(iso=os.path.basename(iso)))
+            gesamt = self._bau_sekunden()
+            phase_txt = T['fertig_phase'].format(iso=os.path.basename(iso))
+            if gesamt is not None:
+                phase_txt += f"  ·  ⏱ {gesamt // 60}:{gesamt % 60:02d} Min"
+            self.setze_phase(phase_txt)
             self.melde(Gtk.MessageType.INFO, T['fertig_titel'],
                        T['fertig_text'].format(iso=os.path.basename(iso),
                                                groesse=groesse_lesbar(os.path.getsize(iso)),
@@ -2053,7 +2143,13 @@ class SnapshotApp(Gtk.Window):
             self.balken.set_fraction(0.0)
             self.balken.set_text("")
             self.setze_phase(T['kein_abbild_phase'])
-            self.melde(Gtk.MessageType.WARNING, T['kein_abbild_titel'], T['kein_abbild_text'])
+            # Sonderfall: Klon war fertig, ging aber beim platzsparenden Secure-Boot-Umbau
+            # verloren -> klare Erklaerung statt nacktem "kein Abbild".
+            sb_warn = self._secure_boot_warnung(log_text)
+            if sb_warn:
+                self.melde(Gtk.MessageType.WARNING, sb_warn[0], sb_warn[1])
+            else:
+                self.melde(Gtk.MessageType.WARNING, T['kein_abbild_titel'], T['kein_abbild_text'])
             ergebnis_ok = False
 
         if self.selbsttest:

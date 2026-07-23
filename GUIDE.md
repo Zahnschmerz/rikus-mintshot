@@ -299,6 +299,10 @@ them to strangers!
 the top of the program window — shows version, publisher and the full
 GPL-3 license text.
 
-**What is under the hood?**  The proven tools *refractasnapshot*
-(ISO build) and *Calamares* (installer) — this program makes them
-usable with clicks, in your own language.
+**What is under the hood?**  Most of it is our own work — the
+Secure Boot chain, adapting the clone to foreign hardware, stick
+persistence, the honest space preview and a custom-configured installer
+built on *Calamares*. The very first step — collecting your running
+system into a base ISO — is handled by a proven helper tool that is set
+up automatically on first start. This program makes it all usable with
+clicks, in your own language.

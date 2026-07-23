@@ -311,6 +311,10 @@ Sticks sicher verwahren und nicht an Fremde weitergeben!
 **„ℹ️ Über"** klicken — zeigt Version, Herausgeber und den vollständigen
 GPL-3-Lizenztext.
 
-**Woher kommt die Technik?**  Unter der Haube arbeiten die bewährten
-Werkzeuge *refractasnapshot* (ISO-Bau) und *Calamares* (Installation) —
-dieses Programm macht sie per Klick und auf Deutsch bedienbar.
+**Woher kommt die Technik?**  Der Großteil ist eigene Technik — die
+Secure-Boot-Kette, die Anpassung des Klons an fremde Hardware, die
+Persistenz auf dem Stick, die ehrliche Platzvorschau und ein eigens
+eingerichteter Installer auf *Calamares*-Basis. Den ersten Schritt —
+das laufende System in eine Basis-ISO einsammeln — übernimmt ein
+bewährtes Hilfsprogramm, das beim ersten Start automatisch mitkommt.
+Dieses Programm macht alles per Klick und auf Deutsch bedienbar.

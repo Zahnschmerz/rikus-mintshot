@@ -1,5 +1,5 @@
 Package: rikus-mintshot
-Version: 7.2
+Version: 7.3
 Architecture: all
 Maintainer: Gilbert Rikus <gilbert@rikus.info>
 Section: utils
@@ -17,12 +17,13 @@ Description: One-click bootable clone of your running Linux Mint system
  including all your data. A system-cloning tool that Linux Mint has no
  built-in equivalent for.
  .
- It uses the refractasnapshot engine and a custom-configured Calamares
- installer for a full takeover on install (account, settings and logins
- come straight from the clone). Boots with Secure Boot on or off (signed
- shim + GRUB chain). GUI in German or English, chosen automatically.
+ It wires proven building blocks together behind a one-click GUI, with a
+ custom-configured Calamares installer for a full takeover on install
+ (account, settings and logins come straight from the clone). Boots with
+ Secure Boot on or off (signed shim + GRUB chain). GUI in German or
+ English, chosen automatically.
  Free and open source (GPL-3.0).
  .
  This package installs the application and its data files and pulls in
- the required build/live/install tooling. The off-repository
- refractasnapshot-base engine is fetched automatically on first run.
+ the required build/live/install tooling. An additional off-repository
+ build helper is fetched automatically on first run.

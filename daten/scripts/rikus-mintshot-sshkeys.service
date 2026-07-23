@@ -7,10 +7,16 @@ Documentation=https://github.com/Zahnschmerz/rikus-mintshot
 # und zwar still: erst beim Zugriff von aussen faellt es auf.
 # Dieser Dienst erzeugt fehlende Schluessel und startet sshd nach. Auf Systemen, die
 # ihre Schluessel haben, tut er nichts.
-DefaultDependencies=no
-After=local-fs.target
-Before=ssh.service sshd.service network-pre.target
-Wants=local-fs.target
+# Reihenfolge WICHTIG: NICHT vor network-pre.target und NICHT mit DefaultDependencies=no
+# starten! Im Live-Betrieb erzeugt Mints live-config die SSH-Schluessel selbst
+# (/lib/live/config/1160-openssh-server). Lief dieser Dienst FRUEHER als live-config,
+# machte er die Schluessel selbst und rief synchron "systemctl restart ssh" -> das
+# wartete aufs Netz, das seinerseits auf uns wartete = Deadlock, der Live-Boot blieb
+# haengen (kein Desktop). Normal eingereiht laeuft er NACH live-config: die Schluessel
+# sind schon da -> er tut nichts. Fest installierte Systeme (kein live-config) versorgt
+# er wie bisher, nur eingereiht vor ssh.service.
+After=local-fs.target live-config.service
+Before=ssh.service sshd.service
 
 [Service]
 Type=oneshot

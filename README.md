@@ -57,20 +57,22 @@ Then start **Rikus Mintshot** from your applications menu.
 > file needed, no second download.
 
 **Or from source:** run `python3 rikus-mintshot.py` (or double-click it in your file
-manager and choose "Run"). On first start the app checks what's missing (mainly the
-`refractasnapshot` engine, which isn't in Mint's default repos) and offers to install
+manager and choose "Run"). On first start the app checks what's missing (mainly a
+base ISO-build helper that isn't in Mint's default repos) and offers to install
 it — one password prompt, a few minutes.
 
 Full step-by-step instructions: **[GUIDE.md](GUIDE.md)** (English) / **[ANLEITUNG.md](ANLEITUNG.md)** (Deutsch).
 What changed in each release: **[CHANGELOG.md](CHANGELOG.md)**.
 
-## Under the hood & credits
+## What's inside
 
-Built on top of proven, existing tools — this project wires them together with a friendly GUI:
+Rikus Mintshot is a **standalone program** — most of it is our own work:
 
-- **[Refracta](https://sourceforge.net/projects/refracta/)** (refractasnapshot / refractainstaller) — the actual snapshot/ISO-building engine.
-- **Debian `live-boot` / `live-config`** — the live-boot machinery.
-- **[Calamares](https://calamares.io/)** — the graphical installer, with a custom clone configuration (no user/locale/keyboard pages — everything comes from your clone).
+- **Secure Boot chain** (signed shim + GRUB): the stick boots even with Secure Boot **on** — no need to disable anything in the BIOS.
+- **The clone runs on foreign hardware:** Wi-Fi, LAN, the SSH host keys and the firmware boot order are all fixed up **inside the clone itself**, not tied to the original machine.
+- **Persistence** on the stick (for MBR **and** GPT sticks), an **honest space preview** before the build, an **update notice**, and a **custom-configured installer** that carries over your account, language and settings **1:1** — with no new-user setup.
+
+Like every Linux program it stands on open building blocks (among others **[Calamares](https://calamares.io/)** for the installer and Debian **live-boot/live-config** for the live boot). The very first step — collecting your running system into a base ISO — is done by a proven helper tool that is set up automatically on first start.
 
 ## Sister project
 

@@ -63,11 +63,13 @@ fi
 # ("Start request repeated too quickly").
 if systemctl list-unit-files ssh.service >/dev/null 2>&1; then
     systemctl reset-failed ssh.service >/dev/null 2>&1 || true
-    systemctl restart ssh.service >/dev/null 2>&1 || true
+    # --no-block: NICHT synchron auf den ssh-Start warten (sonst Deadlock, falls ssh
+    # aufs Netz wartet). Wir haben die Schluessel angelegt, das genuegt.
+    systemctl restart --no-block ssh.service >/dev/null 2>&1 || true
     sag "SSH-Dienst neu gestartet: $(systemctl is-active ssh.service 2>/dev/null)"
 elif systemctl list-unit-files sshd.service >/dev/null 2>&1; then
     systemctl reset-failed sshd.service >/dev/null 2>&1 || true
-    systemctl restart sshd.service >/dev/null 2>&1 || true
+    systemctl restart --no-block sshd.service >/dev/null 2>&1 || true
     sag "SSH-Dienst neu gestartet: $(systemctl is-active sshd.service 2>/dev/null)"
 fi
 
