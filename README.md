@@ -41,6 +41,3 @@ Benutzen ist kostenlos. Vervielfältigen, Verändern und Übernehmen in eigene P
 Use is free of charge. Copying, modifying and reusing it in your own programs are **not**
 permitted. The full text ships with every package as `LICENSE`.
 
-*Fassungen bis einschliesslich 1. August 2026 wurden unter der GNU GPL-3 veröffentlicht und
-bleiben unter der GNU GPL-3. Releases up to and including 1 August 2026 were published under
-the GNU GPL-3 and remain under it.*
